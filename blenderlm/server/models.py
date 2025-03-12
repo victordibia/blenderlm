@@ -1,0 +1,213 @@
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, Field
+
+
+class ObjectType(str, Enum):
+    CUBE = "CUBE"
+    SPHERE = "SPHERE"
+    CYLINDER = "CYLINDER"
+    PLANE = "PLANE"
+    CONE = "CONE"
+    TORUS = "TORUS"
+    EMPTY = "EMPTY"
+    CAMERA = "CAMERA"
+    LIGHT = "LIGHT"
+
+
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Vector3(BaseModel):
+    """3D vector with x, y, z components"""
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    
+    def to_list(self) -> List[float]:
+        """Convert to [x, y, z] list format"""
+        return [self.x, self.y, self.z]
+
+
+class Color(BaseModel):
+    """RGBA color"""
+    r: float = Field(default=0.8, ge=0.0, le=1.0)
+    g: float = Field(default=0.8, ge=0.0, le=1.0)
+    b: float = Field(default=0.8, ge=0.0, le=1.0)
+    a: float = Field(default=1.0, ge=0.0, le=1.0)
+    
+    def to_list(self) -> List[float]:
+        """Convert to [r, g, b, a] list format"""
+        return [self.r, self.g, self.b, self.a]
+
+
+class CreateObjectRequest(BaseModel):
+    """Request to create a new object in Blender"""
+    type: ObjectType = ObjectType.CUBE
+    name: Optional[str] = None
+    location: Optional[Union[Vector3, List[float]]] = None
+    rotation: Optional[Union[Vector3, List[float]]] = None
+    scale: Optional[Union[Vector3, List[float]]] = None
+    
+    def to_params(self) -> dict:
+        """Convert to parameters for Blender command"""
+        params: dict[str, Any] = {"type": self.type}
+        
+        if self.name:
+            params["name"] = self.name
+            
+        if self.location:
+            if isinstance(self.location, Vector3):
+                params["location"] = self.location.to_list()
+            else:
+                params["location"] = self.location
+                
+        if self.rotation:
+            if isinstance(self.rotation, Vector3):
+                params["rotation"] = self.rotation.to_list()
+            else:
+                params["rotation"] = self.rotation
+                
+        if self.scale:
+            if isinstance(self.scale, Vector3):
+                params["scale"] = self.scale.to_list()
+            else:
+                params["scale"] = self.scale
+                
+        return params
+
+
+class JobInfo(BaseModel):
+    """Information about a job"""
+    id: str
+    command_type: str
+    params: Dict[str, Any]
+    status: JobStatus
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    created_at: float
+    completed_at: Optional[float] = None
+
+
+class ObjectInfo(BaseModel):
+    """Information about an object in Blender"""
+    name: str
+    type: str
+    location: List[float]
+    rotation: List[float]
+    scale: List[float]
+    materials: Optional[List[str]] = None
+
+
+class ModifyObjectRequest(BaseModel):
+    """Request to modify an existing object in Blender"""
+    name: Optional[str] = None
+    location: Optional[Union[Vector3, List[float]]] = None
+    rotation: Optional[Union[Vector3, List[float]]] = None
+    scale: Optional[Union[Vector3, List[float]]] = None
+    visible: Optional[bool] = None
+    
+    def to_params(self) -> dict:
+        """Convert to parameters for Blender command"""
+        params: dict[str, Any] = {}
+        
+        if self.name:
+            params["name"] = self.name
+        
+        if self.location:
+            if isinstance(self.location, Vector3):
+                params["location"] = self.location.to_list()
+            else:
+                params["location"] = self.location
+                
+        if self.rotation:
+            if isinstance(self.rotation, Vector3):
+                params["rotation"] = self.rotation.to_list()
+            else:
+                params["rotation"] = self.rotation
+                
+        if self.scale:
+            if isinstance(self.scale, Vector3):
+                params["scale"] = self.scale.to_list()
+            else:
+                params["scale"] = self.scale
+                
+        if self.visible is not None:
+            params["visible"] = self.visible
+            
+        return params
+
+
+class DeleteObjectRequest(BaseModel):
+    """Request to delete an object from Blender"""
+    name: str
+
+
+class MaterialRequest(BaseModel):
+    """Request to set a material for an object"""
+    object_name: str
+    material_name: Optional[str] = None
+    color: Optional[Union[Color, List[float]]] = None
+    
+    def to_params(self) -> dict:
+        """Convert to parameters for Blender command"""
+        params: dict[str, Any] = {"object_name": self.object_name}
+        
+        if self.material_name:
+            params["material_name"] = self.material_name
+            
+        if self.color:
+            if isinstance(self.color, Color):
+                params["color"] = self.color.to_list()
+            else:
+                # Ensure list has 4 elements
+                if len(self.color) == 3:
+                    self.color = list(self.color) + [1.0]
+                params["color"] = self.color
+                
+        return params
+
+class CodeRequest(BaseModel):
+    code: str
+
+class RenderRequest(BaseModel):
+    """Request to render the current scene"""
+    output_path: Optional[str] = None
+    resolution_x: Optional[int] = None
+    resolution_y: Optional[int] = None
+    
+    def to_params(self) -> dict:
+        """Convert to parameters for Blender command"""
+        params = {}
+        
+        if self.output_path:
+            params["output_path"] = self.output_path
+            
+        if self.resolution_x:
+            params["resolution_x"] = self.resolution_x
+            
+        if self.resolution_y:
+            params["resolution_y"] = self.resolution_y
+            
+        return params
+
+
+class SessionInfo(BaseModel):
+    """Information about a client session"""
+    session_id: str
+    created: float
+    last_activity: float
+    object_count: int = 0
+
+
+class ToolInfo(BaseModel):
+    """Information about an available tool"""
+    name: str
+    description: str
+    parameters: dict
+    endpoint: str

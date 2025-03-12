@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "blenderlm"
+version = "0.1.0"
+description = "LLM Tools for Blender"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Victor Dibia", email = "your.email@example.com"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi>=0.95.0",
+    "uvicorn>=0.22.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.24.0",
+    "typer>=0.9.0",
+    "rich>=13.4.0",
+]
+
+[project.optional-dependencies]
+autogen = [
+    "autogen-agentchat",
+]
+dev = [
+    "pytest>=7.3.1",
+    "black>=23.3.0",
+    "isort>=5.12.0",
+    "mypy>=1.3.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/blenderlm"
+"Bug Tracker" = "https://github.com/yourusername/blenderlm/issues"
+
+[project.scripts]
+blenderlm = "blenderlm.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["blenderlm"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 100

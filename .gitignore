@@ -2,7 +2,10 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+blenderlm_jobs.db 
+blenderlm_api.log 
+*.DS_Store
+**.DS_Store 
 # C extensions
 *.so
 
