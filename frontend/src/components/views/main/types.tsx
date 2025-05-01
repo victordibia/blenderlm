@@ -1,0 +1,18 @@
+export interface Lab {
+  id: string;
+  title: string;
+  type: "python" | "docker" | "cloud";
+}
+
+export const defaultLabs: Lab[] = [
+  {
+    id: "component-builder",
+    title: "Component Builder",
+    type: "python",
+  },
+  {
+    id: "manual-control",
+    title: "Manual Control",
+    type: "python",
+  },
+];

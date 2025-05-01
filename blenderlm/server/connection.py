@@ -78,16 +78,17 @@ class BlenderConnection:
             self.sock = None
             return False
     
-    
-    # In the BlenderConnection.receive_full_response method:
-    def receive_full_response(self, buffer_size=8192, timeout=30.0):  
+    def receive_full_response(self, buffer_size=32768, timeout=120.0):  
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
         if self.sock is None: 
             raise ConnectionError("Not connected to Blender")
-        self.sock.settimeout(timeout)  # Use the increased timeout
+        self.sock.settimeout(timeout)  # Use a much longer timeout for large responses
         
         try:
+            start_time = time.time()
+            data_buffer = b''
+            
             while True:
                 try:
                     chunk = self.sock.recv(buffer_size)
@@ -97,42 +98,124 @@ class BlenderConnection:
                         break
                     
                     chunks.append(chunk)
+                    data_buffer = b''.join(chunks)
+                    total_bytes = len(data_buffer)
                     
-                    # Check if we've received a complete JSON object
+                    # Try to parse what we have as JSON
                     try:
-                        data = b''.join(chunks)
-                        json.loads(data.decode('utf-8'))
-                        # If parsing succeeded, we have a complete response
-                        logger.debug(f"Received complete response ({len(data)} bytes)")
-                        return data
+                        # If parsing succeeds, we have a complete response
+                        json.loads(data_buffer.decode('utf-8'))
+                        logger.debug(f"Received complete response ({total_bytes} bytes)")
+                        return data_buffer
                     except json.JSONDecodeError:
-                        # Incomplete JSON, continue receiving
+                        # Check if we've received a large enough payload that might indicate
+                        # we're dealing with image data
+                        if total_bytes > 1000000:  # Over 1MB, likely a very large image
+                            logger.info(f"Large data transfer in progress ({total_bytes} bytes so far)")
+                        
+                        # Not a complete JSON yet, continue if within timeout
+                        elapsed = time.time() - start_time
+                        if elapsed > timeout:
+                            logger.warning(f"Timeout exceeded after receiving {total_bytes} bytes")
+                            break
                         continue
+                        
                 except socket.timeout:
-                    # If we hit a timeout, log it and break
-                    logger.warning("Socket timeout during receive operation")
+                    logger.warning(f"Socket timeout after receiving {len(data_buffer) if data_buffer else 0} bytes")
                     break
+                    
                 except (ConnectionError, BrokenPipeError) as e:
                     logger.error(f"Socket connection error: {str(e)}")
                     raise
+                    
         except socket.timeout:
-            logger.warning("Socket timeout during receive operation")
+            logger.warning(f"Socket timeout during receive operation after {time.time() - start_time:.2f}s")
         except Exception as e:
             logger.error(f"Error during receive: {str(e)}")
             raise
             
         # Try to use what we have
         if chunks:
-            data = b''.join(chunks)
+            data_buffer = b''.join(chunks)
+            total_bytes = len(data_buffer)
             try:
                 # Try to parse what we have
-                json.loads(data.decode('utf-8'))
-                return data
-            except json.JSONDecodeError:
-                # Still raise an exception but provide debug info
-                data_preview = data.decode('utf-8')[:100] + "..." if len(data) > 100 else data.decode('utf-8')
-                logger.error(f"Incomplete JSON response: {data_preview}")
-                raise Exception("Incomplete JSON response received")
+                parsed_data = json.loads(data_buffer.decode('utf-8'))
+                return data_buffer
+            except json.JSONDecodeError as e:
+                # Check if we received a large amount of data that might be a partial base64 image
+                if total_bytes > 100000:  # Over 100KB, likely containing image data
+                    logger.warning(f"Received large incomplete JSON ({total_bytes} bytes), likely containing image data")
+                    # Try to fix common issues with base64 image data
+                    try:
+                        # Sometimes the JSON might be malformed at the end - try to recover
+                        data_str = data_buffer.decode('utf-8', errors='replace')
+                        
+                        # First attempt: Find the end of the base64 string
+                        first_quote_pos = data_str.find('"image_base64": "') + 16
+                        if first_quote_pos > 16:  # Found the start of base64 data
+                            second_quote_pos = data_str.find('"', first_quote_pos)
+                            if second_quote_pos == -1:  # End quote not found, fix by adding it
+                                # Find the last valid closing structure
+                                possible_end = data_str.rfind('"}')
+                                if possible_end > first_quote_pos:
+                                    # Attempt to reconstruct a valid JSON by adding closing quote and brace
+                                    repaired_json = data_str[:possible_end+2]
+                                    # Try parsing the patched JSON
+                                    try:
+                                        json.loads(repaired_json)
+                                        logger.info(f"Successfully recovered JSON by reconstructing it")
+                                        return repaired_json.encode('utf-8')
+                                    except:
+                                        pass
+                                        
+                        # Second attempt: Look for common JSON structural elements at the end
+                        for end_marker in ['}}', '"}}', '"}]}', '"}}}']:
+                            last_pos = data_str.rfind(end_marker)
+                            if last_pos > 0:
+                                truncated_data = data_str[:last_pos + len(end_marker)]
+                                try:
+                                    # Try parsing the truncated data
+                                    json.loads(truncated_data)
+                                    logger.info(f"Successfully recovered JSON by truncating at marker {end_marker}")
+                                    return truncated_data.encode('utf-8')
+                                except:
+                                    pass
+                                    
+                        # Third attempt: Extract just the first object level
+                        # This extracts the status and removes image_base64 that might be corrupted
+                        if '"status": "success"' in data_str and '"result":' in data_str:
+                            try:
+                                # Build a minimally viable response removing the image data
+                                minimal_json = '{' + data_str.split('"status": "success"')[0] + '"status": "success", "result": {"status": "success", "image_truncated": true}}'
+                                json.loads(minimal_json)
+                                logger.info("Generated minimal success response, removed image data")
+                                return minimal_json.encode('utf-8')
+                            except:
+                                pass
+                    except Exception as repair_err:
+                        logger.error(f"Failed to repair JSON: {str(repair_err)}")
+                
+                # Still unable to parse, provide detailed error
+                data_preview = data_buffer.decode('utf-8', errors='replace')[:200] + "..." if len(data_buffer) > 200 else data_buffer.decode('utf-8', errors='replace')
+                logger.error(f"Incomplete JSON response ({total_bytes} bytes): {data_preview}")
+                
+                # For very large responses, return a substitute response instead of failing
+                if total_bytes > 200000:  # Over 200KB, definitely an image
+                    logger.info("Creating substitute response for large image data")
+                    substitute_response = {
+                        "status": "success", 
+                        "result": {
+                            "status": "partial_success", 
+                            "message": f"Received {total_bytes} bytes of data but JSON was incomplete. Image data was too large to process.",
+                            "image_received": True,
+                            "image_size": total_bytes,
+                            "filepath": data_str.split('"filepath": "')[1].split('"')[0] if '"filepath": "' in data_str else "unknown"
+                        }
+                    }
+                    return json.dumps(substitute_response).encode('utf-8')
+                
+                raise Exception(f"Incomplete JSON response received ({total_bytes} bytes, error at position {e.pos})")
         else:
             raise Exception("No data received")
 

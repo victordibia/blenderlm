@@ -1,8 +1,11 @@
-from typing import Dict, List, Optional, Union, Any
-import httpx
-from autogen_core.tools import FunctionTool
-from autogen_core.code_executor import ImportFromModule
+import os
+import trace
+import traceback
+from typing import Dict, List, Optional, Union, Any, Callable
+import asyncio
+from .client import BlenderLMClient
 
+default_api_url = os.environ.get("BLENDERLM_API_URL", "http://localhost:8199")
 
 async def create_blender_object(
     type: str = "CUBE",
@@ -10,7 +13,8 @@ async def create_blender_object(
     location: Optional[List[float]] = None,
     rotation: Optional[List[float]] = None,
     scale: Optional[List[float]] = None,
-    api_url: str = "http://localhost:8000",
+    color: Optional[List[float]] = None,
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
@@ -22,43 +26,30 @@ async def create_blender_object(
         location: Optional [x, y, z] location coordinates
         rotation: Optional [x, y, z] rotation in radians
         scale: Optional [x, y, z] scale factors
+        color: Optional [R, G, B] or [R, G, B, A] color values (0.0-1.0) to apply directly
         api_url: The URL of the BlenderLM API
         session_id: Optional session ID for the Blender connection
 
     Returns:
         str: Description of the created object
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    params: Dict[str, Any] = {
-        "type": type
-    }
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
     
-    if name:
-        params["name"] = name
-    if location:
-        params["location"] = location
-    if rotation:
-        params["rotation"] = rotation
-    if scale:
-        params["scale"] = scale
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_url}/api/objects",
-            json=params,
-            headers=headers
-        )
-        response.raise_for_status()
-        result = response.json()
-        
-        # Extract session ID if provided in response
-        if "session_id" in result and not session_id:
-            session_id = result["session_id"]
-            
+    try:
+        result = await client.create_object(
+            obj_type=type,
+            name=name,
+            location=location,
+            rotation=rotation,
+            scale=scale,
+            color=color,
+            wait_for_result=True
+        ) 
+         
         return f"Created {type} named '{result['name']}' at position {result['location']}"
+    except Exception as e:
+        traceback.print_exc()
+        return f"Error creating {type}: {str(e)}"
 
 
 async def modify_blender_object(
@@ -67,7 +58,7 @@ async def modify_blender_object(
     rotation: Optional[List[float]] = None,
     scale: Optional[List[float]] = None,
     visible: Optional[bool] = None,
-    api_url: str = "http://localhost:8000",
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
@@ -85,31 +76,17 @@ async def modify_blender_object(
     Returns:
         str: Description of the modifications made
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    params: Dict[str, Any] = {
-        "name": name
-    }
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
     
-    if location:
-        params["location"] = location
-    if rotation:
-        params["rotation"] = rotation
-    if scale:
-        params["scale"] = scale
-    if visible is not None:
-        params["visible"] = visible
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.put(
-            f"{api_url}/api/objects/{name}",
-            json=params,
-            headers=headers
+    try:
+        result = await client.modify_object(
+            name=name,
+            location=location,
+            rotation=rotation,
+            scale=scale,
+            visible=visible,
+            wait_for_result=True
         )
-        response.raise_for_status()
-        result = response.json()
         
         # Build a description of what was changed
         changes = []
@@ -123,11 +100,13 @@ async def modify_blender_object(
             changes.append(f"visibility to {'visible' if visible else 'hidden'}")
             
         return f"Modified object '{name}': " + ", ".join(changes)
+    except Exception as e:
+        return f"Error modifying object '{name}': {str(e)}"
 
 
 async def delete_blender_object(
     name: str,
-    api_url: str = "http://localhost:8000",
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
@@ -141,26 +120,20 @@ async def delete_blender_object(
     Returns:
         str: Confirmation message
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            f"{api_url}/api/objects/{name}",
-            headers=headers
-        )
-        response.raise_for_status()
-        result = response.json()
-        
-        return f"Deleted object '{result['deleted']}'"
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        result = await client.delete_object(name=name, wait_for_result=True)
+        return f"Deleted object '{result.get('deleted', name)}'"
+    except Exception as e:
+        return f"Error deleting object '{name}': {str(e)}"
 
 
 async def set_blender_material(
     object_name: str,
     color: Optional[List[float]] = None,
     material_name: Optional[str] = None,
-    api_url: str = "http://localhost:8000",
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
@@ -176,27 +149,15 @@ async def set_blender_material(
     Returns:
         str: Description of the material applied
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    params: Dict[str, Any] = {
-        "object_name": object_name
-    }
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
     
-    if color:
-        params["color"] = color
-    if material_name:
-        params["material_name"] = material_name
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_url}/api/materials",
-            json=params,
-            headers=headers
+    try:
+        result = await client.set_material(
+            object_name=object_name,
+            color=color,
+            material_name=material_name,
+            wait_for_result=True
         )
-        response.raise_for_status()
-        result = response.json()
         
         color_str = ""
         if color:
@@ -238,13 +199,15 @@ async def set_blender_material(
             return f"Applied {color_str} {material_desc} to object '{object_name}'"
         else:
             return f"Applied {material_desc} to object '{object_name}'"
+    except Exception as e:
+        return f"Error applying material to '{object_name}': {str(e)}"
 
 
 async def render_blender_scene(
     output_path: Optional[str] = None,
     resolution_x: Optional[int] = None,
     resolution_y: Optional[int] = None,
-    api_url: str = "http://localhost:8000",
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
@@ -260,40 +223,30 @@ async def render_blender_scene(
     Returns:
         str: Description of the render operation
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    params = {}
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
     
-    if output_path:
-        params["output_path"] = output_path
-    if resolution_x:
-        params["resolution_x"] = resolution_x
-    if resolution_y:
-        params["resolution_y"] = resolution_y
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_url}/api/render",
-            json=params,
-            headers=headers
+    try:
+        result = await client.render_scene(
+            output_path=output_path,
+            resolution_x=resolution_x,
+            resolution_y=resolution_y,
+            wait_for_result=True
         )
-        response.raise_for_status()
-        result = response.json()
         
         if output_path:
-            return f"Started rendering scene to '{output_path}'"
+            return f"Rendered scene to '{result.get('output_path', output_path)}'"
         else:
-            return "Rendered scene preview"
+            return "Rendered scene successfully"
+    except Exception as e:
+        return f"Error rendering scene: {str(e)}"
 
 
 async def get_blender_scene_info(
-    api_url: str = "http://localhost:8000",
+    api_url: str = default_api_url,
     session_id: Optional[str] = None,
 ) -> str:
     """
-    Get information about the current Blender scene.
+    Get information about the current Blender scene, list objects and their properties.
 
     Args:
         api_url: The URL of the BlenderLM API
@@ -302,17 +255,10 @@ async def get_blender_scene_info(
     Returns:
         str: Description of the current scene
     """
-    headers = {}
-    if session_id:
-        headers["session_id"] = session_id
-        
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{api_url}/api/scene",
-            headers=headers
-        )
-        response.raise_for_status()
-        scene = response.json()
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        scene = await client.get_scene_info(wait_for_result=True)
         
         # Create a human-readable description of the scene
         objects_desc = []
@@ -329,99 +275,181 @@ async def get_blender_scene_info(
             scene_text += "."
             
         return scene_text
+    except Exception as e:
+        return f"Error getting scene info: {str(e)}"
 
 
-# Create function tools
-create_object_tool = FunctionTool(
-    func=create_blender_object,
-    description="Create a new 3D object in Blender",
-    global_imports=[
-        ImportFromModule("typing", ("List", "Optional")),
-        "httpx",
-    ],
-)
+async def capture_viewport(
+    filepath: Optional[str] = None,
+    camera_view: bool = False,
+    return_base64: bool = True,
+    api_url: str = default_api_url,
+    session_id: Optional[str] = None,
+) -> str:
+    """
+    Capture the current viewport using OpenGL rendering.
 
-modify_object_tool = FunctionTool(
-    func=modify_blender_object,
-    description="Modify an existing object in Blender",
-    global_imports=[
-        ImportFromModule("typing", ("List", "Optional")),
-        "httpx",
-    ],
-)
+    Args:
+        filepath: Optional path to save the captured image
+        camera_view: Whether to switch to camera view before capture (default: False)
+        return_base64: Whether to return the image as base64 (default: True)
+        api_url: The URL of the BlenderLM API
+        session_id: Optional session ID for the Blender connection
 
-delete_object_tool = FunctionTool(
-    func=delete_blender_object,
-    description="Delete an object from Blender",
-    global_imports=[
-        ImportFromModule("typing", ("Optional",)),
-        "httpx",
-    ],
-)
+    Returns:
+        str: Description of the captured viewport
+    """
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        # Use _make_request directly since client.py doesn't have a capture_viewport method
+        params = {}
+        if filepath:
+            params["filepath"] = filepath
+        if camera_view is not None:
+            params["camera_view"] = camera_view
+        if return_base64 is not None:
+            params["return_base64"] = return_base64
+            
+        response = await client._make_request("POST", "/api/viewport", params)
+        
+        if "job_id" in response:
+            result = await client._wait_for_job_completion(response["job_id"])
+        else:
+            result = response
+            
+        if filepath:
+            return f"Captured viewport to '{filepath}'"
+        else:
+            return "Captured viewport"
+    except Exception as e:
+        return f"Error capturing viewport: {str(e)}"
 
-set_material_tool = FunctionTool(
-    func=set_blender_material,
-    description="Set a material for an object in Blender",
-    global_imports=[
-        ImportFromModule("typing", ("List", "Optional")),
-        "httpx",
-    ],
-)
 
-render_scene_tool = FunctionTool(
-    func=render_blender_scene,
-    description="Render the current scene in Blender",
-    global_imports=[
-        ImportFromModule("typing", ("Optional",)),
-        "httpx",
-    ],
-)
+async def execute_code(
+    code: str,
+    api_url: str = default_api_url,
+    session_id: Optional[str] = None,
+) -> str:
+    """
+    Execute arbitrary Python code in Blender.
 
-get_scene_info_tool = FunctionTool(
-    func=get_blender_scene_info,
-    description="Get information about the current Blender scene",
-    global_imports=[
-        ImportFromModule("typing", ("Optional",)),
-        "httpx",
-    ],
-)
+    Args:
+        code: The Python code to execute
+        api_url: The URL of the BlenderLM API
+        session_id: Optional session ID for the Blender connection
+
+    Returns:
+        str: Description of the execution result
+    """
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        result = await client.execute_code(code=code, wait_for_result=True)
+        return "Executed Python code in Blender"
+    except Exception as e:
+        return f"Error executing code: {str(e)}"
+
+
+async def clear_blender_scene(
+    api_url: str = default_api_url,
+    session_id: Optional[str] = None,
+) -> str:
+    """
+    Clear all objects from the current Blender scene.
+
+    Args:
+        api_url: The URL of the BlenderLM API
+        session_id: Optional session ID for the Blender connection
+
+    Returns:
+        str: Confirmation message
+    """
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        # Use _make_request directly since client.py doesn't have a clear_scene method
+        response = await client._make_request("POST", "/api/scene/clear", {})
+        
+        if "job_id" in response:
+            result = await client._wait_for_job_completion(response["job_id"])
+        else:
+            result = response
+            
+        return "Cleared all objects from the scene"
+    except Exception as e:
+        return f"Error clearing scene: {str(e)}"
+
+
+async def add_blender_camera(
+    location: Optional[List[float]] = None,
+    rotation: Optional[List[float]] = None,
+    api_url: str = default_api_url,
+    session_id: Optional[str] = None,
+) -> str:
+    """
+    Add a camera to the Blender scene.
+
+    Args:
+        location: Optional [x, y, z] location coordinates
+        rotation: Optional [x, y, z] rotation in radians
+        api_url: The URL of the BlenderLM API
+        session_id: Optional session ID for the Blender connection
+
+    Returns:
+        str: Description of the created camera
+    """
+    client = BlenderLMClient(api_url=api_url, session_id=session_id)
+    
+    try:
+        # Use _make_request directly since client.py doesn't have an add_camera method
+        params = {}
+        if location:
+            params["location"] = location
+        if rotation:
+            params["rotation"] = rotation
+            
+        response = await client._make_request("POST", "/api/camera", params)
+        
+        if "job_id" in response:
+            result = await client._wait_for_job_completion(response["job_id"])
+        else:
+            result = response
+            
+        return "Added camera to scene"
+    except Exception as e:
+        return f"Error adding camera: {str(e)}"
 
 
 # Function to get all tools
 async def get_blender_tools(
-    api_url: str = "http://localhost:8000",
+    api_url: str = "http://localhost:8199",
     session_id: Optional[str] = None
-) -> List[FunctionTool]:
+) -> List[Callable]:
     """
-    Get all available Blender tools.
-    
-    This will connect to the BlenderLM API and retrieve the tool set.
-    You can optionally specify a session ID to use an existing Blender session.
+    Get all available Blender tool functions.
     
     Args:
-        api_url: URL of the BlenderLM API
-        session_id: Optional session ID for persistent connection
+        api_url: URL of the BlenderLM API (currently unused in this function but kept for potential future dynamic loading)
+        session_id: Optional session ID (currently unused in this function but kept for potential future dynamic loading)
         
     Returns:
-        List of FunctionTool objects ready to use with Autogen
+        List of async functions representing the available tools.
     """
-    # TODO: Implement dynamic tool discovery from the API
-    # For now, just return the static tools with the provided api_url
+    # TODO: Implement dynamic tool discovery from the API?
+    # For now, just return the static list of functions.
     
-    tools: List[FunctionTool] = [
-        create_object_tool,
-        modify_object_tool,
-        delete_object_tool,
-        set_material_tool,
-        render_scene_tool,
-        get_scene_info_tool,
+    tools: List[Callable] = [
+        create_blender_object,
+        modify_blender_object,
+        delete_blender_object,
+        set_blender_material,
+        render_blender_scene,
+        get_blender_scene_info,
+        capture_viewport,
+        execute_code,
+        clear_blender_scene,
+        add_blender_camera,
     ]
-    
-    # # Pass along the api_url and session_id as defaults
-    # for tool in tools:
-    #     tool.default_kwargs = {
-    #         "api_url": api_url,
-    #         "session_id": session_id
-    #     }
     
     return tools

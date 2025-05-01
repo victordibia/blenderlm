@@ -47,38 +47,33 @@ class Color(BaseModel):
 
 
 class CreateObjectRequest(BaseModel):
-    """Request to create a new object in Blender"""
-    type: ObjectType = ObjectType.CUBE
+    """Request to create a new object in the scene"""
+    type: str
     name: Optional[str] = None
-    location: Optional[Union[Vector3, List[float]]] = None
-    rotation: Optional[Union[Vector3, List[float]]] = None
-    scale: Optional[Union[Vector3, List[float]]] = None
+    location: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    scale: Optional[List[float]] = None
+    color: Optional[List[float]] = None
     
     def to_params(self) -> dict:
         """Convert to parameters for Blender command"""
-        params: dict[str, Any] = {"type": self.type}
+        params: Dict[str, Any] = {"type": self.type}
         
         if self.name:
             params["name"] = self.name
             
         if self.location:
-            if isinstance(self.location, Vector3):
-                params["location"] = self.location.to_list()
-            else:
-                params["location"] = self.location
-                
+            params["location"] = tuple(self.location)
+            
         if self.rotation:
-            if isinstance(self.rotation, Vector3):
-                params["rotation"] = self.rotation.to_list()
-            else:
-                params["rotation"] = self.rotation
-                
+            params["rotation"] = tuple(self.rotation)
+            
         if self.scale:
-            if isinstance(self.scale, Vector3):
-                params["scale"] = self.scale.to_list()
-            else:
-                params["scale"] = self.scale
-                
+            params["scale"] = tuple(self.scale)
+            
+        if self.color:
+            params["color"] = self.color
+            
         return params
 
 
@@ -172,8 +167,40 @@ class MaterialRequest(BaseModel):
                 
         return params
 
+
+class ClearSceneRequest(BaseModel):
+    """Request to clear all objects from the current scene"""
+    
+    def to_params(self) -> Dict[str, Any]:
+        return {}
+
+
+class AddCameraRequest(BaseModel):
+    """Request to add a camera to the scene"""
+    location: Optional[Union[Vector3, List[float]]] = None
+    rotation: Optional[Union[Vector3, List[float]]] = None
+    
+    def to_params(self) -> Dict[str, Any]:
+        params: Dict[str, Any] = {}
+        
+        if self.location:
+            if isinstance(self.location, Vector3):
+                params["location"] = self.location.to_list()
+            else:
+                params["location"] = self.location
+                
+        if self.rotation:
+            if isinstance(self.rotation, Vector3):
+                params["rotation"] = self.rotation.to_list()
+            else:
+                params["rotation"] = self.rotation
+                
+        return params
+
+
 class CodeRequest(BaseModel):
     code: str
+
 
 class RenderRequest(BaseModel):
     """Request to render the current scene"""
@@ -211,3 +238,36 @@ class ToolInfo(BaseModel):
     description: str
     parameters: dict
     endpoint: str
+
+
+class ViewportCaptureRequest(BaseModel):
+    filepath: Optional[str] = None
+    camera_view: bool = False
+    return_base64: bool = True
+    
+    def to_params(self) -> Dict[str, Any]:
+        return {
+            "filepath": self.filepath,
+            "camera_view": self.camera_view,
+            "return_base64": self.return_base64
+        }
+
+
+# --- New Models for Chat Endpoint ---
+
+class ModelProvider(str, Enum):
+    """Supported model providers"""
+    GOOGLE = "google"
+    OPENAI = "openai"
+    # Add other providers here (e.g., ANTHROPIC, MISTRAL)
+
+class ModelInfo(BaseModel):
+    """Information about the language model to use"""
+    provider: ModelProvider = ModelProvider.GOOGLE
+    name: str = "gemini-1.5-flash-latest"
+
+class ChatRequest(BaseModel):
+    """Chat request with natural language query"""
+    query: str
+    model: ModelInfo = Field(default_factory=ModelInfo) # Use ModelInfo with default
+    session_id: Optional[str] = None

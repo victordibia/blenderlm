@@ -1,5 +1,10 @@
 # BlenderLM
 
+![BlenderLM Logo](https://raw.githubusercontent.com/yourusername/blenderlm/main/docs/icon.png)
+
+[![PyPI version](https://badge.fury.io/py/blenderlm.svg)](https://pypi.org/project/blenderlm/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 BlenderLM is a Python package that enables LLMs (Large Language Models) to control and interact with Blender, the open-source 3D creation suite. It provides a clean API and tools designed specifically for use with LLM agent frameworks like Autogen.
 
 ## Features
@@ -9,6 +14,7 @@ BlenderLM is a Python package that enables LLMs (Large Language Models) to contr
 - Support for creating, modifying, and manipulating 3D objects
 - Material and scene management
 - Support for multiple client sessions
+- Web UI for intuitive interaction (optional)
 
 ## Installation
 
@@ -19,6 +25,14 @@ pip install blenderlm
 # If you're using Autogen
 pip install blenderlm[autogen]
 ```
+
+## Architecture
+
+BlenderLM consists of three main components:
+
+1. **Blender Addon**: A Blender addon that exposes Blender functionality via a socket server
+2. **API Server**: A FastAPI server that communicates with the Blender addon and provides a REST API
+3. **Client Library**: Python client and tools for interacting with the API server (with Autogen integration)
 
 ## Blender Addon Setup
 
@@ -41,7 +55,19 @@ pip install blenderlm[autogen]
 
 ```bash
 # Start the server
-blenderlm serve --port 8000
+blenderlm serve --port 8000 --blender-port 9876
+```
+
+### Quick Test
+
+You can verify your setup with:
+
+```bash
+# Test connection to Blender
+blenderlm test --check-only
+
+# Run a simple test creating objects
+blenderlm test
 ```
 
 ### Using with Autogen
@@ -78,6 +104,18 @@ async def main():
     await blender_assistant.run_stream(task="Create a simple scene with a red cube and a blue sphere")
 
 asyncio.run(main())
+```
+
+### Get an Example Script
+
+You can generate an example script with:
+
+```bash
+# Generate and display an example script
+blenderlm example
+
+# Save the example to a file
+blenderlm example --output=my_script.py
 ```
 
 ## Direct API Usage
@@ -129,6 +167,18 @@ async def create_scene():
         )
 ```
 
+## Web UI (Optional)
+
+BlenderLM includes an optional web UI for interactive control. The frontend is built with Gatsby and communicates with the BlenderLM API.
+
+To start the web UI:
+
+```bash
+cd frontend
+yarn install
+yarn start
+```
+
 ## Available Tools
 
 BlenderLM provides the following tools:
@@ -139,10 +189,33 @@ BlenderLM provides the following tools:
 - **Scene Management**: Manage the 3D scene
 - **Rendering**: Render the scene to an image
 
+## Command Line Interface
+
+```bash
+# Show help
+blenderlm --help
+
+# Show version
+blenderlm version
+
+# Start the server
+blenderlm serve --port 8000 --blender-port 9876
+
+# Test connection
+blenderlm test
+
+# Generate example script
+blenderlm example --output=my_script.py
+```
+
+## Security Note
+
+The BlenderLM addon opens a socket server that accepts and executes commands. Only use it on trusted networks as it has no authentication mechanism by default.
+
 ## License
 
 MIT
 
 ## Acknowledgement
 
-Inspired by [blencer-mcp](https://github.com/ahujasid/blender-mcp)
+Inspired by [blender-mcp](https://github.com/ahujasid/blender-mcp)

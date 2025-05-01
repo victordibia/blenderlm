@@ -139,7 +139,7 @@ class SQLiteJobQueue:
     def list_pending_jobs(self) -> List[Dict[str, Any]]:
         with self._get_conn() as conn:
             cursor = conn.execute(
-                "SELECT jobs.* FROM jobs JOIN queue ON jobs.id = queue.job_id ORDER BY queue.id"
+                "SELECT jobs.* FROM jobs JOIN queue ON jobs.id = queue.job_id ORDER BY jobs.created_at DESC"
             )
             jobs = []
             for row in cursor:

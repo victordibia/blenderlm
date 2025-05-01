@@ -39,8 +39,8 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/blenderlm"
-"Bug Tracker" = "https://github.com/yourusername/blenderlm/issues"
+"Homepage" = "https://github.com/victordibia/blenderlm"
+"Bug Tracker" = "https://github.com/victordibia/blenderlm/issues"
 
 [project.scripts]
 blenderlm = "blenderlm.cli:app"

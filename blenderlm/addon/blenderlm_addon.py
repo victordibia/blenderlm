@@ -85,8 +85,10 @@ class BlenderLMServer:
                                 # If successful, clear the buffer and process command
                                 self.buffer = b''
                                 response = self.execute_command(command)
+                                
+                                # Serialize response and send in chunks if large
                                 response_json = json.dumps(response)
-                                self.client.sendall(response_json.encode('utf-8'))
+                                self._send_response_in_chunks(response_json)
                             except json.JSONDecodeError:
                                 # Incomplete data, keep in buffer
                                 pass
@@ -115,6 +117,49 @@ class BlenderLMServer:
             print(f"Server error: {str(e)}")
             
         return 0.1  # Continue timer with 0.1 second interval
+        
+    def _send_response_in_chunks(self, response_json):
+        """Send a JSON response in chunks if it's large"""
+        if not self.client:
+            return
+            
+        try:
+            # Convert response to bytes
+            response_bytes = response_json.encode('utf-8')
+            total_size = len(response_bytes)
+            
+            # If response is small enough, send it all at once
+            if total_size <= 16384:  # 16KB
+                self.client.sendall(response_bytes)
+                return
+                
+            # For large responses (like those with images), send in chunks
+            print(f"Sending large response ({total_size} bytes) in chunks")
+            chunk_size = 16384  # 16KB chunks
+            
+            # Set socket to blocking mode for reliable sending
+            self.client.setblocking(True)
+            
+            # Send data in chunks
+            for i in range(0, total_size, chunk_size):
+                chunk = response_bytes[i:i + chunk_size]
+                self.client.sendall(chunk)
+                
+            # Return to non-blocking mode after sending
+            self.client.setblocking(False)
+            print(f"Successfully sent large response of {total_size} bytes")
+            
+        except Exception as e:
+            print(f"Error sending response: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Close the connection on error
+            try:
+                if self.client:
+                    self.client.close()
+                    self.client = None
+            except:
+                pass
 
     def execute_command(self, command):
         """Execute a command in the main Blender thread"""
@@ -158,6 +203,9 @@ class BlenderLMServer:
             "execute_code": self.execute_code,
             "set_material": self.set_material,
             "render_scene": self.render_scene,
+            "capture_viewport": self.capture_viewport,
+            "clear_scene": self.clear_scene,
+            "add_camera": self.add_camera,
         }
         
         handler = handlers.get(cmd_type)
@@ -219,8 +267,8 @@ class BlenderLMServer:
             traceback.print_exc()
             return {"error": str(e)}
     
-    def create_object(self, type="CUBE", name=None, location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1)):
-        """Create a new object in the scene"""
+    def create_object(self, type="CUBE", name=None, location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1), color=None):
+        """Create a new object in the scene and optionally apply a color"""
         # Deselect all objects
         bpy.ops.object.select_all(action='DESELECT')
         
@@ -265,12 +313,51 @@ class BlenderLMServer:
             if hasattr(obj, 'data') and obj.data:
                 obj.data.name = f"{name}_data"
         
+        # Apply color if provided
+        material_name = None
+        if color and hasattr(obj, 'data') and hasattr(obj.data, 'materials'):
+            try:
+                mat_name = f"{obj.name}_material"
+                mat = bpy.data.materials.get(mat_name)
+                if not mat:
+                    mat = bpy.data.materials.new(name=mat_name)
+                
+                # Set up material nodes
+                mat.use_nodes = True
+                principled = mat.node_tree.nodes.get('Principled BSDF')
+                if not principled:
+                    principled = mat.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
+                    output = mat.node_tree.nodes.get('Material Output')
+                    if not output:
+                        output = mat.node_tree.nodes.new('ShaderNodeOutputMaterial')
+                    mat.node_tree.links.new(principled.outputs[0], output.inputs[0])
+                
+                # Set color
+                if len(color) >= 3:
+                    principled.inputs['Base Color'].default_value = (
+                        color[0],
+                        color[1],
+                        color[2],
+                        1.0 if len(color) < 4 else color[3]
+                    )
+                
+                # Assign material to object
+                if not obj.data.materials:
+                    obj.data.materials.append(mat)
+                else:
+                    obj.data.materials[0] = mat
+                
+                material_name = mat.name
+            except Exception as e:
+                print(f"Error applying color: {str(e)}")
+        
         return {
             "name": obj.name,
             "type": obj.type,
             "location": [obj.location.x, obj.location.y, obj.location.z],
             "rotation": [obj.rotation_euler.x, obj.rotation_euler.y, obj.rotation_euler.z],
             "scale": [obj.scale.x, obj.scale.y, obj.scale.z],
+            "material": material_name
         }
     
     def modify_object(self, name, location=None, rotation=None, scale=None, visible=None):
@@ -456,26 +543,258 @@ class BlenderLMServer:
                 "object": object_name,
                 "material": material_name if 'material_name' in locals() else None
             }
+
+    def capture_viewport(self, filepath=None, camera_view=False, return_base64=True, max_dimension=1024):
+        """Capture the current viewport content using OpenGL render and optionally return as base64"""
+        try:
+            # Generate a default filepath if none provided
+            if not filepath:
+                import tempfile
+                import os
+                temp_dir = tempfile.gettempdir()
+                filepath = os.path.join(temp_dir, f"blenderlm_viewport_{int(time.time())}.png")
+                
+            # Ensure directory exists
+            import os
+            os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+            
+            # Store current render path
+            original_path = bpy.context.scene.render.filepath
+            
+            # Set temporary render path
+            bpy.context.scene.render.filepath = filepath
+            
+            # Switch to camera view if requested
+            if camera_view:
+                for area in bpy.context.screen.areas:
+                    if area.type == 'VIEW_3D':
+                        override = bpy.context.copy()
+                        override['area'] = area
+                        override['region'] = area.regions[-1]
+                        bpy.ops.view3d.view_camera(override)
+                        break
+                        
+            # Render viewport using OpenGL
+            bpy.ops.render.opengl(write_still=True)
+            
+            # Restore original render path
+            bpy.context.scene.render.filepath = original_path
+            
+            result = {
+                "status": "success",
+                "filepath": filepath
+            }
+            
+            # Optionally encode the image as base64
+            if return_base64 and os.path.exists(filepath):
+                # Import PIL to resize images if needed
+                try:
+                    from PIL import Image
+                    import base64
+                    import io
+                    
+                    # Open and potentially resize the image before encoding
+                    with Image.open(filepath) as img:
+                        # Check if we need to resize
+                        width, height = img.size
+                        if width > max_dimension or height > max_dimension:
+                            # Calculate new dimensions preserving aspect ratio
+                            if width > height:
+                                new_width = max_dimension
+                                new_height = int(height * (max_dimension / width))
+                            else:
+                                new_height = max_dimension
+                                new_width = int(width * (max_dimension / height))
+                                
+                            print(f"Resizing viewport image from {width}x{height} to {new_width}x{new_height}")
+                            img = img.resize((new_width, new_height))
+                            
+                            # Save the resized image to a different path
+                            resized_path = filepath.replace('.png', '_resized.png')
+                            img.save(resized_path, 'PNG', optimize=True)
+                            
+                            # Replace filepath with resized path
+                            result["original_path"] = filepath
+                            result["filepath"] = resized_path
+                            result["resized"] = True
+                            result["original_size"] = [width, height]
+                            result["new_size"] = [new_width, new_height]
+                            
+                            # Use the resized image for base64 encoding
+                            filepath = resized_path
+                        
+                        # For base64 encoding, use a compressed format and memory buffer
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=85, optimize=True)
+                        buffer.seek(0)
+                        image_data = buffer.read()
+                        
+                        # Calculate compression ratio for logs
+                        orig_size = os.path.getsize(filepath)
+                        compressed_size = len(image_data)
+                        compression_ratio = (orig_size - compressed_size) / orig_size * 100
+                        print(f"Compressed image from {orig_size} bytes to {compressed_size} bytes ({compression_ratio:.1f}% reduction)")
+                        
+                        # Encode the compressed image
+                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                        result["image_base64"] = base64_data
+                        result["compressed"] = True
+                except ImportError:
+                    # Fall back to regular file reading if PIL is not available
+                    import base64
+                    with open(filepath, 'rb') as image_file:
+                        image_data = image_file.read()
+                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                        result["image_base64"] = base64_data
+                except Exception as img_err:
+                    print(f"Error processing viewport image: {str(img_err)}")
+                    result["image_error"] = str(img_err)
+            
+            return result
+        except Exception as e:
+            print(f"Error capturing viewport: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "message": str(e)
+            }
     
-    def render_scene(self, output_path=None, resolution_x=None, resolution_y=None):
+    def render_scene(self, output_path=None, resolution_x=None, resolution_y=None, return_base64=True, max_dimension=1024):
         """Render the current scene"""
-        if resolution_x is not None:
-            bpy.context.scene.render.resolution_x = resolution_x
-        
-        if resolution_y is not None:
-            bpy.context.scene.render.resolution_y = resolution_y
-        
-        if output_path:
+        try:
+            if resolution_x is not None:
+                bpy.context.scene.render.resolution_x = resolution_x
+            
+            if resolution_y is not None:
+                bpy.context.scene.render.resolution_y = resolution_y
+            
+            # If no output path provided, create a temporary one
+            if not output_path:
+                import tempfile
+                import os
+                temp_dir = tempfile.gettempdir()
+                output_path = os.path.join(temp_dir, f"blenderlm_render_{int(time.time())}.png")
+                
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            
+            # Store original path
+            original_path = bpy.context.scene.render.filepath
+            
+            # Set render path
             bpy.context.scene.render.filepath = output_path
-        
-        # Render the scene
-        bpy.ops.render.render(write_still=bool(output_path))
-        
-        return {
-            "rendered": True,
-            "output_path": output_path if output_path else "[not saved]",
-            "resolution": [bpy.context.scene.render.resolution_x, bpy.context.scene.render.resolution_y],
-        }
+            
+            # Render the scene
+            bpy.ops.render.render(write_still=True)
+            
+            # Restore original path
+            bpy.context.scene.render.filepath = original_path
+            
+            result = {
+                "rendered": True,
+                "output_path": output_path,
+                "resolution": [bpy.context.scene.render.resolution_x, bpy.context.scene.render.resolution_y],
+            }
+            
+            # Optionally encode the image as base64
+            if return_base64 and os.path.exists(output_path):
+                # Import PIL to resize images if needed
+                try:
+                    from PIL import Image
+                    import base64
+                    import io
+                    
+                    # Open and potentially resize the image before encoding
+                    with Image.open(output_path) as img:
+                        # Check if we need to resize
+                        width, height = img.size
+                        if width > max_dimension or height > max_dimension:
+                            # Calculate new dimensions preserving aspect ratio
+                            if width > height:
+                                new_width = max_dimension
+                                new_height = int(height * (max_dimension / width))
+                            else:
+                                new_height = max_dimension
+                                new_width = int(width * (max_dimension / height))
+                                
+                            print(f"Resizing image from {width}x{height} to {new_width}x{new_height}")
+                            img = img.resize((new_width, new_height))
+                            
+                            # Save the resized image to a different path
+                            resized_path = output_path.replace('.png', '_resized.png')
+                            img.save(resized_path, 'PNG', optimize=True)
+                            
+                            # Replace output path with resized path
+                            result["original_path"] = output_path
+                            result["output_path"] = resized_path
+                            result["resized"] = True
+                            result["original_size"] = [width, height]
+                            result["new_size"] = [new_width, new_height]
+                            
+                            # Use the resized image for base64 encoding
+                            output_path = resized_path
+                        
+                        # For base64 encoding, use a compressed format and memory buffer
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=85, optimize=True)
+                        buffer.seek(0)
+                        image_data = buffer.read()
+                        
+                        # Encode the compressed image
+                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                        result["image_base64"] = base64_data
+                        result["compressed"] = True
+                except ImportError:
+                    # Fall back to regular file reading if PIL is not available
+                    import base64
+                    with open(output_path, 'rb') as image_file:
+                        image_data = image_file.read()
+                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                        result["image_base64"] = base64_data
+                except Exception as img_err:
+                    print(f"Error processing image: {str(img_err)}")
+                    result["image_error"] = str(img_err)
+            
+            return result
+        except Exception as e:
+            print(f"Error rendering scene: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "error",
+                "message": str(e)
+            }
+
+    def clear_scene(self):
+        """Clear all objects from the current scene"""
+        try:
+            bpy.ops.object.select_all(action='SELECT')
+            bpy.ops.object.delete()
+            return {"status": "success", "message": "Scene cleared"}
+        except Exception as e:
+            print(f"Error clearing scene: {str(e)}")
+            return {"status": "error", "message": str(e)}
+
+    def add_camera(self, location=(0, 0, 0), rotation=(0, 0, 0)):
+        """Add a camera to the scene"""
+        try:
+            bpy.ops.object.camera_add(location=location, rotation=rotation)
+            camera = bpy.context.active_object
+            
+            # Set this camera as the active camera for the scene
+            bpy.context.scene.camera = camera
+            
+            return {
+                "status": "success",
+                "camera_name": camera.name,
+                "location": [camera.location.x, camera.location.y, camera.location.z],
+                "rotation": [camera.rotation_euler.x, camera.rotation_euler.y, camera.rotation_euler.z],
+                "active": True
+            }
+        except Exception as e:
+            print(f"Error adding camera: {str(e)}")
+            return {"status": "error", "message": str(e)}
 
 # Blender UI Panel
 class BLENDERLM_PT_Panel(bpy.types.Panel):
