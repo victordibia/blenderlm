@@ -29,6 +29,56 @@ export interface Job {
   completed_at?: number;
 }
 
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  description?: string;
+  file_path?: string;
+  status: "active" | "archived";
+  created_at: number;
+  updated_at: number;
+  last_opened_at?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  description?: string;
+  file_path?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateProjectRequest {
+  name?: string;
+  description?: string;
+  file_path?: string;
+  status?: "active" | "archived";
+  metadata?: Record<string, any>;
+}
+
+export interface LoadProjectRequest {
+  project_id?: string;
+  file_path?: string;
+}
+
+export interface SaveProjectRequest {
+  project_id: string;
+  file_path?: string;
+  create_backup?: boolean;
+}
+
+export interface NewProjectRequest {
+  name: string;
+  description?: string;
+  save_current?: boolean;
+  current_project_id?: string;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectInfo[];
+  total_count: number;
+}
+
 export class BlenderAPI {
   /**
    * Check connection status with Blender
@@ -266,6 +316,259 @@ export class BlenderAPI {
       return data;
     } catch (error) {
       console.error("Error processing chat:", error);
+      throw error;
+    }
+  }
+
+  // =============================================================================
+  // PROJECT MANAGEMENT METHODS
+  // =============================================================================
+
+  /**
+   * List all projects
+   */
+  static async listProjects(status?: string, limit: number = 50): Promise<ProjectListResponse> {
+    try {
+      const params = new URLSearchParams();
+      if (status) params.append("status", status);
+      params.append("limit", limit.toString());
+      
+      const response = await fetch(`${API_BASE_URL}/api/projects?${params}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error listing projects:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new project
+   */
+  static async createProject(request: CreateProjectRequest): Promise<ProjectInfo> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error creating project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific project by ID
+   */
+  static async getProject(projectId: string): Promise<ProjectInfo> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error getting project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a project
+   */
+  static async updateProject(projectId: string, request: UpdateProjectRequest): Promise<ProjectInfo> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error updating project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a project
+   */
+  static async deleteProject(projectId: string): Promise<{ message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new Blender project (clear scene)
+   */
+  static async newProject(request: NewProjectRequest): Promise<{ project_id: string; job_id: string; message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/new`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error creating new project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load a project (.blend file)
+   */
+  static async loadProject(request: LoadProjectRequest): Promise<{ project_id?: string; job_id: string; file_path: string; message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/load`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error loading project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save current project
+   */
+  static async saveProject(request: SaveProjectRequest): Promise<{ project_id: string; job_id: string; file_path: string; message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error saving project:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get information about the current Blender project
+   */
+  static async getCurrentProjectInfo(): Promise<{ job_id: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/current`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error getting current project info:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * List jobs for a specific project
+   */
+  static async listProjectJobs(projectId: string, limit: number = 50): Promise<Job[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/jobs?limit=${limit}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error listing project jobs:", error);
       throw error;
     }
   }

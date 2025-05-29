@@ -544,30 +544,32 @@ print("Animation keyframes created - use the timeline to view the animation")`,
       // Process the query
       const response = await BlenderAPI.processChat(currentQuery);
 
-      // Remove the loading message
-      setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
+      if (response.status === "success" && response.response) {
+        // Remove the loading message
+        setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
 
-      if (response.status === "success") {
-        // Add all messages from the agent
-        const assistantMessages = response.messages.map((msg: any) => ({
+        // Add the single assistant message from response.response.content
+        const assistantMessage = {
           role: "assistant",
-          content: msg.content,
-        }));
+          content: response.response.content || "Assistant processed the request.",
+        };
 
         setChatMessages((prev) => [
-          ...prev.filter((msg) => msg.id !== loadingId),
-          ...assistantMessages,
+          ...prev,
+          assistantMessage,
         ]);
 
         // Refresh viewport to show any changes made
         await refreshViewport();
       } else {
+        // Remove the loading message
+        setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
         // Add error message
         setChatMessages((prev) => [
-          ...prev.filter((msg) => msg.id !== loadingId),
+          ...prev,
           {
             role: "assistant",
-            content: `Error: ${response.error || "Failed to process query"}`,
+            content: `Error: ${response.error || response.detail || "Failed to process query or invalid response structure"}`,
           },
         ]);
       }
@@ -618,66 +620,68 @@ print("Animation keyframes created - use the timeline to view the animation")`,
       {/* Action Feedback Toast */}
       {renderActionFeedback()}
 
-      {/* Connection Status Component */}
+      {/* Connection Status Component - Always visible */}
       <ConnectionStatusComponent
         connectionStatus={connectionStatus}
         isCheckingConnection={isCheckingConnection}
         checkConnection={checkConnection}
       />
 
-      {/* Main Content: Side by Side Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 flex-grow">
-        {/* Left Panel: Controls */}
-        <div className="flex flex-col xl:col-span-2">
-          <ControlsPanel
-            connectionStatus={connectionStatus}
-            isExecutingCommand={isExecutingCommand}
-            isJobHistoryOpen={isJobHistoryOpen}
-            isLoadingJobHistory={isLoadingJobHistory}
-            jobHistory={jobHistory}
-            input={input}
-            output={output}
-            chatInput={chatInput}
-            chatMessages={chatMessages}
-            isProcessingChat={isProcessingChat}
-            codeExamples={codeExamples}
-            setInput={setInput}
-            setOutput={setOutput}
-            setChatInput={setChatInput}
-            setIsJobHistoryOpen={setIsJobHistoryOpen}
-            fetchJobHistory={fetchJobHistory}
-            executeCode={executeCode}
-            handleChatSubmit={handleChatSubmit}
-            handleAddRandomSphere={handleAddRandomSphere}
-            handleAddRandomCube={handleAddRandomCube}
-            handleAddRandomMaterial={handleAddRandomMaterial}
-            handleRenderScene={handleRenderScene}
-            handleGetSceneInfo={handleGetSceneInfo}
-            handleClearScene={handleClearScene}
-            handleAddCamera={handleAddCamera}
-          />
-        </div>
+      {/* Main Content: Side by Side Layout - Conditionally rendered */}
+      {connectionStatus.connected && (
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 flex-grow">
+          {/* Left Panel: Controls */}
+          <div className="flex flex-col xl:col-span-2">
+            <ControlsPanel
+              connectionStatus={connectionStatus}
+              isExecutingCommand={isExecutingCommand}
+              isJobHistoryOpen={isJobHistoryOpen}
+              isLoadingJobHistory={isLoadingJobHistory}
+              jobHistory={jobHistory}
+              input={input}
+              output={output}
+              chatInput={chatInput}
+              chatMessages={chatMessages}
+              isProcessingChat={isProcessingChat}
+              codeExamples={codeExamples}
+              setInput={setInput}
+              setOutput={setOutput}
+              setChatInput={setChatInput}
+              setIsJobHistoryOpen={setIsJobHistoryOpen}
+              fetchJobHistory={fetchJobHistory}
+              executeCode={executeCode}
+              handleChatSubmit={handleChatSubmit}
+              handleAddRandomSphere={handleAddRandomSphere}
+              handleAddRandomCube={handleAddRandomCube}
+              handleAddRandomMaterial={handleAddRandomMaterial}
+              handleRenderScene={handleRenderScene}
+              handleGetSceneInfo={handleGetSceneInfo}
+              handleClearScene={handleClearScene}
+              handleAddCamera={handleAddCamera}
+            />
+          </div>
 
-        {/* Right Panel: Viewport and Scene Info */}
-        <div className="flex flex-col xl:col-span-3 gap-6">
-          {/* Viewport */}
-          <ViewportPanel
-            connectionStatus={connectionStatus}
-            previewImage={previewImage}
-            renderedImage={renderedImage}
-            activeImageSource={activeImageSource}
-            isViewportMinimized={isViewportMinimized}
-            isRefreshingViewport={isRefreshingViewport}
-            refreshViewport={refreshViewport}
-            downloadImage={downloadImage}
-            setIsViewportMinimized={setIsViewportMinimized}
-            errorMessage={errorMessage}
-          />
+          {/* Right Panel: Viewport and Scene Info */}
+          <div className="flex flex-col xl:col-span-3 gap-6">
+            {/* Viewport */}
+            <ViewportPanel
+              connectionStatus={connectionStatus}
+              previewImage={previewImage}
+              renderedImage={renderedImage}
+              activeImageSource={activeImageSource}
+              isViewportMinimized={isViewportMinimized}
+              isRefreshingViewport={isRefreshingViewport}
+              refreshViewport={refreshViewport}
+              downloadImage={downloadImage}
+              setIsViewportMinimized={setIsViewportMinimized}
+              errorMessage={errorMessage}
+            />
 
-          {/* Scene Info Panel */}
-          {connectionStatus.connected && <SceneInfoPanel />}
+            {/* Scene Info Panel */}
+            {connectionStatus.connected && <SceneInfoPanel />}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

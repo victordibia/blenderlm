@@ -4,6 +4,8 @@ import threading
 import socket
 import time
 from bpy.props import StringProperty, IntProperty # type: ignore
+import os
+import tempfile
 
 bl_info = {
     "name": "BlenderLM",
@@ -129,7 +131,7 @@ class BlenderLMServer:
             total_size = len(response_bytes)
             
             # If response is small enough, send it all at once
-            if total_size <= 16384:  # 16KB
+            if total_size <= 16384: # 16KB
                 self.client.sendall(response_bytes)
                 return
                 
@@ -206,6 +208,11 @@ class BlenderLMServer:
             "capture_viewport": self.capture_viewport,
             "clear_scene": self.clear_scene,
             "add_camera": self.add_camera,
+            # Project management commands
+            "new_project": self.new_project,
+            "load_project": self.load_project,
+            "save_project": self.save_project,
+            "get_project_info": self.get_project_info,
         }
         
         handler = handlers.get(cmd_type)
@@ -549,13 +556,10 @@ class BlenderLMServer:
         try:
             # Generate a default filepath if none provided
             if not filepath:
-                import tempfile
-                import os
                 temp_dir = tempfile.gettempdir()
                 filepath = os.path.join(temp_dir, f"blenderlm_viewport_{int(time.time())}.png")
                 
             # Ensure directory exists
-            import os
             os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
             
             # Store current render path
@@ -671,8 +675,6 @@ class BlenderLMServer:
             
             # If no output path provided, create a temporary one
             if not output_path:
-                import tempfile
-                import os
                 temp_dir = tempfile.gettempdir()
                 output_path = os.path.join(temp_dir, f"blenderlm_render_{int(time.time())}.png")
                 
@@ -780,20 +782,173 @@ class BlenderLMServer:
         """Add a camera to the scene"""
         try:
             bpy.ops.object.camera_add(location=location, rotation=rotation)
-            camera = bpy.context.active_object
-            
-            # Set this camera as the active camera for the scene
-            bpy.context.scene.camera = camera
+            camera = bpy.context.object
+            return {
+                "name": camera.name,
+                "location": list(camera.location),
+                "rotation": list(camera.rotation_euler),
+                "type": "CAMERA"
+            }
+        except Exception as e:
+            raise Exception(f"Failed to add camera: {str(e)}")
+
+    # =============================================================================
+    # PROJECT MANAGEMENT METHODS
+    # =============================================================================
+    
+    def new_project(self, clear_scene=True):
+        """Create a new Blender project (clear scene and reset to defaults)"""
+        try:
+            if clear_scene:
+                # Clear all objects
+                bpy.ops.object.select_all(action='SELECT')
+                bpy.ops.object.delete()
+                
+                # Reset scene settings to defaults
+                bpy.context.scene.frame_start = 1
+                bpy.context.scene.frame_end = 250
+                bpy.context.scene.frame_current = 1
+                
+                # Add default objects (cube, camera, light)
+                bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+                bpy.ops.object.camera_add(location=(7.48, -6.51, 5.34))
+                bpy.ops.object.light_add(type='SUN', location=(4, 4, 6))
+                
+            # Mark as not saved
+            bpy.data.is_saved = False
+            bpy.data.filepath = ""
             
             return {
                 "status": "success",
-                "camera_name": camera.name,
-                "location": [camera.location.x, camera.location.y, camera.location.z],
-                "rotation": [camera.rotation_euler.x, camera.rotation_euler.y, camera.rotation_euler.z],
-                "active": True
+                "message": "New project created",
+                "scene_name": bpy.context.scene.name,
+                "object_count": len(bpy.context.scene.objects),
+                "is_saved": bpy.data.is_saved,
+                "filepath": bpy.data.filepath
             }
         except Exception as e:
-            print(f"Error adding camera: {str(e)}")
+            print(f"Error creating new project: {str(e)}")
+            return {"status": "error", "message": str(e)}
+    
+    def load_project(self, file_path):
+        """Load a .blend file"""
+        try:
+            # Validate file path
+            if not file_path:
+                raise ValueError("File path is required")
+            
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+            
+            if not file_path.lower().endswith('.blend'):
+                raise ValueError("File must be a .blend file")
+            
+            # Load the blend file
+            bpy.ops.wm.open_mainfile(filepath=file_path)
+            
+            return {
+                "status": "success",
+                "message": f"Project loaded successfully",
+                "filepath": bpy.data.filepath,
+                "filename": os.path.basename(bpy.data.filepath),
+                "scene_name": bpy.context.scene.name,
+                "object_count": len(bpy.context.scene.objects),
+                "is_saved": bpy.data.is_saved
+            }
+        except Exception as e:
+            print(f"Error loading project: {str(e)}")
+            return {"status": "error", "message": str(e)}
+    
+    def save_project(self, file_path=None, create_backup=False):
+        """Save current project to a .blend file"""
+        try:
+            # If no file path provided, use current filepath or create a default one
+            if not file_path:
+                if bpy.data.filepath:
+                    file_path = bpy.data.filepath
+                else:
+                    # Create a default filename in temp directory
+                    timestamp = int(time.time())
+                    temp_dir = tempfile.gettempdir()
+                    file_path = os.path.join(temp_dir, f"blenderlm_project_{timestamp}.blend")
+            
+            # Ensure the file has .blend extension
+            if not file_path.lower().endswith('.blend'):
+                file_path += '.blend'
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+            
+            # Create backup if requested and file already exists
+            backup_path = None
+            if create_backup and os.path.exists(file_path):
+                backup_path = file_path + '.backup'
+                import shutil
+                shutil.copy2(file_path, backup_path)
+            
+            # Save the file
+            bpy.ops.wm.save_as_mainfile(filepath=file_path)
+            
+            return {
+                "status": "success",
+                "message": "Project saved successfully",
+                "filepath": bpy.data.filepath,
+                "filename": os.path.basename(bpy.data.filepath),
+                "backup_created": backup_path is not None,
+                "backup_path": backup_path,
+                "is_saved": bpy.data.is_saved,
+                "file_size": os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            }
+        except Exception as e:
+            print(f"Error saving project: {str(e)}")
+            return {"status": "error", "message": str(e)}
+    
+    def get_project_info(self):
+        """Get information about the current project"""
+        try:
+            # Get basic file info
+            file_info = {
+                "filepath": bpy.data.filepath,
+                "filename": os.path.basename(bpy.data.filepath) if bpy.data.filepath else "Untitled",
+                "is_saved": bpy.data.is_saved,
+                "file_exists": os.path.exists(bpy.data.filepath) if bpy.data.filepath else False
+            }
+            
+            # Get file size if file exists
+            if file_info["file_exists"]:
+                file_info["file_size"] = os.path.getsize(bpy.data.filepath)
+                file_info["modified_time"] = os.path.getmtime(bpy.data.filepath)
+            
+            # Get scene information
+            scene_info = {
+                "scene_name": bpy.context.scene.name,
+                "object_count": len(bpy.context.scene.objects),
+                "material_count": len(bpy.data.materials),
+                "mesh_count": len(bpy.data.meshes),
+                "camera_count": len([obj for obj in bpy.context.scene.objects if obj.type == 'CAMERA']),
+                "light_count": len([obj for obj in bpy.context.scene.objects if obj.type == 'LIGHT']),
+                "frame_start": bpy.context.scene.frame_start,
+                "frame_end": bpy.context.scene.frame_end,
+                "frame_current": bpy.context.scene.frame_current
+            }
+            
+            # Get render settings
+            render_info = {
+                "resolution_x": bpy.context.scene.render.resolution_x,
+                "resolution_y": bpy.context.scene.render.resolution_y,
+                "resolution_percentage": bpy.context.scene.render.resolution_percentage,
+                "engine": bpy.context.scene.render.engine
+            }
+            
+            return {
+                "status": "success",
+                "file_info": file_info,
+                "scene_info": scene_info,
+                "render_info": render_info,
+                "blender_version": ".".join(str(v) for v in bpy.app.version)
+            }
+        except Exception as e:
+            print(f"Error getting project info: {str(e)}")
             return {"status": "error", "message": str(e)}
 
 # Blender UI Panel

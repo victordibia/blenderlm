@@ -85,10 +85,10 @@ class BlenderConnection:
             raise ConnectionError("Not connected to Blender")
         self.sock.settimeout(timeout)  # Use a much longer timeout for large responses
         
+        start_time = time.time()  # Ensure start_time is always defined
+        data_buffer = b''  # Ensure data_buffer is always defined
+        data_str = ''      # Ensure data_str is always defined
         try:
-            start_time = time.time()
-            data_buffer = b''
-            
             while True:
                 try:
                     chunk = self.sock.recv(buffer_size)
@@ -146,9 +146,7 @@ class BlenderConnection:
                 # Check if we received a large amount of data that might be a partial base64 image
                 if total_bytes > 100000:  # Over 100KB, likely containing image data
                     logger.warning(f"Received large incomplete JSON ({total_bytes} bytes), likely containing image data")
-                    # Try to fix common issues with base64 image data
                     try:
-                        # Sometimes the JSON might be malformed at the end - try to recover
                         data_str = data_buffer.decode('utf-8', errors='replace')
                         
                         # First attempt: Find the end of the base64 string
@@ -203,6 +201,9 @@ class BlenderConnection:
                 # For very large responses, return a substitute response instead of failing
                 if total_bytes > 200000:  # Over 200KB, definitely an image
                     logger.info("Creating substitute response for large image data")
+                    # Ensure data_str is defined before use
+                    if not data_str:
+                        data_str = data_buffer.decode('utf-8', errors='replace')
                     substitute_response = {
                         "status": "success", 
                         "result": {

@@ -2,8 +2,7 @@ import os
 import google.generativeai as genai
 import google.ai.generativelanguage as glm
 from PIL import Image
-import asyncio
-from typing import AsyncGenerator, List, Optional, get_origin, get_args, Callable, Dict
+from typing import AsyncGenerator, List, Optional, Callable, Dict
 import json
 
 from ._base_agent import BaseAgent, AgentMessage, AgentTask
@@ -180,7 +179,7 @@ class GeminiAgent(BaseAgent):
                 "tool_calls_requested": tool_calls_requested # Include the tool calls that were requested
             }
 
-            if response_part and not response_part.function_call: # Ensure it's text
+            if response_candidate and response_part and not response_part.function_call: # Ensure it's text
                  text_parts = [p.text for p in response_candidate.content.parts if hasattr(p, 'text')]
                  if text_parts:
                      final_content = " ".join(text_parts).strip()

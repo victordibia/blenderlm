@@ -271,3 +271,61 @@ class ChatRequest(BaseModel):
     query: str
     model: ModelInfo = Field(default_factory=ModelInfo) # Use ModelInfo with default
     session_id: Optional[str] = None
+
+
+# --- Project Management Models ---
+
+class ProjectStatus(str, Enum):
+    """Project status enumeration"""
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+class ProjectInfo(BaseModel):
+    """Project information model"""
+    id: str
+    name: str
+    description: Optional[str] = ""
+    file_path: Optional[str] = ""
+    status: ProjectStatus = ProjectStatus.ACTIVE
+    created_at: float
+    updated_at: float
+    last_opened_at: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class CreateProjectRequest(BaseModel):
+    """Request to create a new project"""
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(default="", max_length=1000)
+    file_path: Optional[str] = ""
+    metadata: Optional[Dict[str, Any]] = None
+
+class UpdateProjectRequest(BaseModel):
+    """Request to update an existing project"""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    file_path: Optional[str] = None
+    status: Optional[ProjectStatus] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class LoadProjectRequest(BaseModel):
+    """Request to load a project (.blend file)"""
+    project_id: Optional[str] = None
+    file_path: Optional[str] = None
+
+class SaveProjectRequest(BaseModel):
+    """Request to save current project"""
+    project_id: str
+    file_path: Optional[str] = None
+    create_backup: bool = True
+
+class NewProjectRequest(BaseModel):
+    """Request to create a new Blender project (clear scene)"""
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(default="", max_length=1000)
+    save_current: bool = False
+    current_project_id: Optional[str] = None
+
+class ProjectListResponse(BaseModel):
+    """Response for listing projects"""
+    projects: List[ProjectInfo]
+    total_count: int
