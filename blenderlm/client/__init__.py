@@ -1,7 +1,7 @@
 from .tools import (
     get_blender_tools,
     create_blender_object,
-    modify_blender_object,
+    # modify_blender_object,
     delete_blender_object,
     set_blender_material,
     render_blender_scene,
@@ -12,7 +12,7 @@ from .client import BlenderLMClient
 __all__ = [
     'get_blender_tools',
     'create_blender_object',
-    'modify_blender_object',
+    # 'modify_blender_object',
     'delete_blender_object',
     'set_blender_material',
     'render_blender_scene',

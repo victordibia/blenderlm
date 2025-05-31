@@ -203,7 +203,7 @@ async def main():
     )
 
     # Get Blender tools
-    blender_tools = await get_blender_tools(api_url="http://localhost:8000")
+    blender_tools = await get_blender_tools()
 
     # Create a Blender assistant agent
     blender_assistant = AssistantAgent(

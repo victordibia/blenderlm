@@ -332,6 +332,41 @@ class BlenderLMClient:
 
         return response
 
+    @blenderlm_tool
+    async def capture_viewport(
+        self,
+        filepath: Optional[str] = None,
+        camera_view: Optional[bool] = None,
+        return_base64: Optional[bool] = True,
+        wait_for_result: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Capture the current viewport using OpenGL rendering.
+
+        Args:
+            filepath: Optional path to save the captured image
+            camera_view: Whether to switch to camera view before capture
+            return_base64: Whether to return the image as base64
+            wait_for_result: Whether to wait for the job to complete
+
+        Returns:
+            Information about the captured viewport
+        """
+        data: Dict[str, Any] = {}
+        if filepath:
+            data["filepath"] = filepath
+        if camera_view is not None:
+            data["camera_view"] = camera_view
+        if return_base64 is not None:
+            data["return_base64"] = return_base64
+
+        response = await self._make_request("POST", "/api/viewport", data)
+
+        if wait_for_result and "job_id" in response:
+            return await self._wait_for_job_completion(response["job_id"])
+
+        return response
+
     async def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """
         Get the status of a job.

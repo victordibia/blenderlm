@@ -1,9 +1,8 @@
 import bpy # type: ignore
 import json
-import threading
 import socket
 import time
-from bpy.props import StringProperty, IntProperty # type: ignore
+from bpy.props import IntProperty # type: ignore
 import os
 import tempfile
 
@@ -308,13 +307,12 @@ class BlenderLMServer:
         
         # Get the created object
         obj = bpy.context.active_object
+        if obj is None:
+            raise RuntimeError(f"Failed to create object of type '{type}'. Blender did not return an active object. Check if the context is correct and parameters are valid.")
         
         # Rename if name is provided
         if name:
-            # First remove any existing object with the same name (already handled above)
-            # Then set the name directly
             obj.name = name
-            
             # In case there are linked data like mesh data with auto-naming,
             # also rename the data if it exists
             if hasattr(obj, 'data') and obj.data:
@@ -553,6 +551,11 @@ class BlenderLMServer:
 
     def capture_viewport(self, filepath=None, camera_view=False, return_base64=True, max_dimension=1024):
         """Capture the current viewport content using OpenGL render and optionally return as base64"""
+        if hasattr(bpy.app, "background") and bpy.app.background:
+            return {
+                "status": "error",
+                "message": "capture_viewport is not supported in background (headless) mode. Run Blender with the UI to use this feature."
+            }
         try:
             # Generate a default filepath if none provided
             if not filepath:
@@ -796,31 +799,36 @@ class BlenderLMServer:
     # PROJECT MANAGEMENT METHODS
     # =============================================================================
     
-    def new_project(self, clear_scene=True):
-        """Create a new Blender project (clear scene and reset to defaults)"""
+    def new_project(self, clear_scene=True, file_path=None):
+        """Create a new Blender project (clear scene and reset to defaults, then save to file)"""
+        import uuid
         try:
             if clear_scene:
                 # Clear all objects
                 bpy.ops.object.select_all(action='SELECT')
                 bpy.ops.object.delete()
-                
                 # Reset scene settings to defaults
                 bpy.context.scene.frame_start = 1
                 bpy.context.scene.frame_end = 250
                 bpy.context.scene.frame_current = 1
-                
                 # Add default objects (cube, camera, light)
                 bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
                 bpy.ops.object.camera_add(location=(7.48, -6.51, 5.34))
                 bpy.ops.object.light_add(type='SUN', location=(4, 4, 6))
-                
-            # Mark as not saved
-            bpy.data.is_saved = False
-            bpy.data.filepath = ""
-            
+
+            # Determine file path
+            if not file_path:
+                home_dir = os.path.expanduser("~")
+                project_dir = os.path.join(home_dir, "blenderlm")
+                os.makedirs(project_dir, exist_ok=True)
+                file_path = os.path.join(project_dir, f"blenderlm_project_{uuid.uuid4().hex}.blend")
+
+            # Save the new project to the file path
+            bpy.ops.wm.save_as_mainfile(filepath=file_path)
+
             return {
                 "status": "success",
-                "message": "New project created",
+                "message": "New project created and saved",
                 "scene_name": bpy.context.scene.name,
                 "object_count": len(bpy.context.scene.objects),
                 "is_saved": bpy.data.is_saved,
@@ -1047,3 +1055,17 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+    # Start the server automatically on the default port
+    port = 9876
+    bpy.types.blenderlm_server = BlenderLMServer(port=port)
+    bpy.types.blenderlm_server.start()
+    bpy.context.scene.blenderlm_server_running = True
+    print(f"BlenderLM server started automatically on port {port}")
+    # Keep Blender running in background mode
+    # import time
+    # try:
+    #     while True:
+    #         time.sleep(1)
+    # except KeyboardInterrupt:
+    #     print("Shutting down BlenderLM server...")
+    #     bpy.types.blenderlm_server.stop()

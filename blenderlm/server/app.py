@@ -32,7 +32,7 @@ from .models import (
 )
 
 from ..client.client import BlenderLMClient
-from ..client.agents import GeminiAgent
+from ..client.agents import OpenAIAgent
 from ..client.tools import get_blender_tools
 
 logging.basicConfig(
@@ -53,11 +53,6 @@ async def lifespan(app: FastAPI):
     db_path = os.environ.get("BLENDERLM_DB_PATH", "blenderlm.db")
     app.state.database = BlenderLMDatabase(db_path)
     logger.info(f"Initialized database: {db_path}")
-    
-    # Migrate from old job queue database if it exists
-    old_db_path = os.environ.get("BLENDERLM_OLD_DB_PATH", "blenderlm_jobs.db")
-    if app.state.database.migrate_from_job_queue_db(old_db_path):
-        logger.info("Successfully migrated from old job queue database")
     
     blender_host = os.environ.get("BLENDERLM_BLENDER_HOST", "localhost")
     blender_port = int(os.environ.get("BLENDERLM_BLENDER_PORT", "9876"))
@@ -103,8 +98,7 @@ async def process_job(job_id: str, database: BlenderLMDatabase, blender_manager:
     if not job:
         logger.error(f"Job {job_id} not found")
         return
-    
-    logger.info(f"Processing job {job_id}: {job['command_type']}")
+     
     
     database.update_job(job_id, JobStatus.PROCESSING)
     
@@ -113,6 +107,8 @@ async def process_job(job_id: str, database: BlenderLMDatabase, blender_manager:
             raise ConnectionError("Could not connect to Blender")
         
         result = await blender_manager.send_command(job["command_type"], job["params"])
+
+      
  
         database.update_job(job_id, JobStatus.COMPLETED, result=result)
         logger.info(f"Job {job_id} completed successfully")
@@ -191,14 +187,18 @@ async def capture_viewport(request: ViewportCaptureRequest, background_tasks: Ba
 @app.post("/api/objects")
 async def create_object(request: CreateObjectRequest, background_tasks: BackgroundTasks):
     """Create a new object in the scene"""
-    job_id = app.state.database.add_job("create_object", request.to_params())
-    background_tasks.add_task(
-        process_job, 
-        job_id, 
-        app.state.database, 
-        app.state.blender_manager
-    )
-    return {"job_id": job_id}
+    try:
+        job_id = app.state.database.add_job("create_object", request.to_params())
+        background_tasks.add_task(
+            process_job, 
+            job_id, 
+            app.state.database, 
+            app.state.blender_manager
+        )
+        return {"job_id": job_id}
+    except Exception as e:
+        logger.error(f"Error creating object: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.put("/api/objects/{name}")
 async def modify_object(
@@ -313,8 +313,8 @@ async def chat_with_blender(request: ChatRequest):
             gemini_api_key = os.environ.get("GEMINI_API_KEY")
             if not gemini_api_key:
                 raise HTTPException(status_code=500, detail="Gemini API key not configured on server.")
-            tools = await get_blender_tools(api_url=base_api_url, session_id=request.session_id)
-            agent = GeminiAgent(
+            tools = await get_blender_tools(session_id=request.session_id)
+            agent = OpenAIAgent(
                 tools=tools,
                 model_name=request.model.name,
                 api_key=gemini_api_key
@@ -328,9 +328,9 @@ async def chat_with_blender(request: ChatRequest):
 
         return {
             "status": "success",
-            "response": agent_response.dict(),
+            "response": agent_response,
             "query": request.query,
-            "model_used": request.model.dict()
+            "model_used": request.model.model_dump()
         }
 
     except HTTPException as http_exc:
@@ -475,22 +475,48 @@ async def list_projects(status: Optional[str] = None, limit: int = 50):
         logger.error(f"Error listing projects: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/projects", response_model=ProjectInfo)
-async def create_project(request: CreateProjectRequest):
-    """Create a new project"""
+@app.post("/api/projects")
+async def create_project(request: CreateProjectRequest, background_tasks: BackgroundTasks):
+    """Create a new project (DB + Blender file, 1:1 mapping)"""
     try:
+        # Step 1: Create project entry in database (without file_path yet)
         project_id = app.state.database.create_project(
             name=request.name,
             description=request.description,
-            file_path=request.file_path,
+            file_path=None,
             metadata=request.metadata
         )
-        
+
+        # Step 2: Add job to clear scene and create new Blender file
+        job_id = app.state.database.add_job(
+            command_type="new_project",
+            params={"clear_scene": True},
+            project_id=project_id
+        )
+
+        # Step 3: Process job in background and update project file_path after job completes
+        async def process_and_update_project(job_id, database, blender_manager, project_id):
+            await process_job(job_id, database, blender_manager)
+            # After job completes, get job result and update project file_path if available
+            job = database.get_job(job_id)
+            if job and job.get("result") and job["result"].get("status") == "success":
+                file_path = job["result"].get("filepath")
+                if file_path:
+                    database.update_project(project_id=project_id, file_path=file_path)
+
+        background_tasks.add_task(
+            process_and_update_project,
+            job_id,
+            app.state.database,
+            app.state.blender_manager,
+            project_id
+        )
+
+        # Step 4: Return project info and job_id (file_path will be updated after Blender job completes)
         project = app.state.database.get_project(project_id)
         if not project:
             raise HTTPException(status_code=500, detail="Failed to create project")
-        
-        return ProjectInfo(**project)
+        return {"project": ProjectInfo(**project), "job_id": job_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -539,39 +565,6 @@ async def delete_project(project_id: str):
         return {"message": "Project deleted successfully"}
     except Exception as e:
         logger.error(f"Error deleting project: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/projects/new")
-async def new_project(request: NewProjectRequest, background_tasks: BackgroundTasks):
-    """Create a new Blender project (clear scene)"""
-    try:
-        # Create project entry in database
-        project_id = app.state.database.create_project(
-            name=request.name,
-            description=request.description
-        )
-        
-        # Add job to clear scene and create new project in Blender
-        job_id = app.state.database.add_job(
-            command_type="new_project",
-            params={"clear_scene": True},
-            project_id=project_id
-        )
-        
-        background_tasks.add_task(
-            process_job,
-            job_id,
-            app.state.database,
-            app.state.blender_manager
-        )
-        
-        return {
-            "project_id": project_id,
-            "job_id": job_id,
-            "message": "New project creation started"
-        }
-    except Exception as e:
-        logger.error(f"Error creating new project: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/projects/load")

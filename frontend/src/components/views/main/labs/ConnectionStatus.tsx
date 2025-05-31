@@ -10,31 +10,40 @@ interface ConnectionStatusProps {
 
 const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
   connectionStatus,
-  isCheckingConnection,
+  isCheckingConnection, // This prop might be deprecated if status === 'fetching' is used instead
   checkConnection,
 }) => {
   return (
     <div className="bg-secondary rounded-lg shadow-sm p-4 mb-4">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          {connectionStatus.connected ? (
+          {connectionStatus.status === "fetching" && (
+            <>
+              <RefreshCcw className="h-5 w-5 text-blue-500 animate-spin" />
+              <span className="font-medium">Connecting to Blender...</span>
+            </>
+          )}
+          {connectionStatus.status === "success" && (
             <>
               <CheckCircle className="h-5 w-5 text-green-500" />
               <span className="font-medium">Connected to Blender</span>
             </>
-          ) : (
+          )}
+          {connectionStatus.status === "failed" && (
             <>
               <AlertCircle className="h-5 w-5 text-red-500" />
-              <span className="font-medium">Not connected to Blender</span>
+              <span className="font-medium">Connection Failed</span>
             </>
           )}
         </div>
         <button
           className="flex items-center gap-1 px-3 py-1 bg-accent/10 hover:bg-accent/20 text-accent rounded-md"
           onClick={checkConnection}
-          disabled={isCheckingConnection}
+          disabled={
+            connectionStatus.status === "fetching" || isCheckingConnection
+          } // Disable if fetching or explicitly checking
         >
-          {isCheckingConnection ? (
+          {connectionStatus.status === "fetching" || isCheckingConnection ? (
             <RefreshCcw className="h-4 w-4 animate-spin" />
           ) : (
             <RefreshCcw className="h-4 w-4" />
@@ -43,7 +52,7 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({
         </button>
       </div>
 
-      {!connectionStatus.connected && (
+      {connectionStatus.status === "failed" && (
         <div className="mt-3 p-3 bg-red-50 text-red-800 rounded-md">
           <h4 className="font-medium mb-1">Connection Failed</h4>
           <p className="text-sm mb-2">

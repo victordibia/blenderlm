@@ -7,7 +7,7 @@
 const API_BASE_URL = "http://localhost:8199";
 
 export interface ConnectionStatus {
-  connected: boolean;
+  status: "fetching" | "success" | "failed";
   error?: string;
 }
 
@@ -67,13 +67,6 @@ export interface SaveProjectRequest {
   create_backup?: boolean;
 }
 
-export interface NewProjectRequest {
-  name: string;
-  description?: string;
-  save_current?: boolean;
-  current_project_id?: string;
-}
-
 export interface ProjectListResponse {
   projects: ProjectInfo[];
   total_count: number;
@@ -84,16 +77,32 @@ export class BlenderAPI {
    * Check connection status with Blender
    */
   static async checkConnection(): Promise<ConnectionStatus> {
+    // Implicitly, the status is 'fetching' when this function is called.
+    // The calling component should manage the 'fetching' state before calling this.
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
+      if (!response.ok) {
+        // Handle HTTP errors like 500, 404 etc.
+        const errorData = await response.text(); // or response.json() if the error is structured
+        return {
+          status: "failed",
+          error: `API request failed: ${response.status} ${response.statusText}. ${errorData}`,
+        };
+      }
       const data = await response.json();
-      return {
-        connected: data.blender_connected,
-        error: data.error,
-      };
+      if (data.blender_connected) {
+        return {
+          status: "success",
+        };
+      } else {
+        return {
+          status: "failed",
+          error: data.error || "Blender not connected.",
+        };
+      }
     } catch (error) {
       return {
-        connected: false,
+        status: "failed",
         error: `Cannot connect to BlenderLM API: ${error}`,
       };
     }
@@ -327,12 +336,15 @@ export class BlenderAPI {
   /**
    * List all projects
    */
-  static async listProjects(status?: string, limit: number = 50): Promise<ProjectListResponse> {
+  static async listProjects(
+    status?: string,
+    limit: number = 50
+  ): Promise<ProjectListResponse> {
     try {
       const params = new URLSearchParams();
       if (status) params.append("status", status);
       params.append("limit", limit.toString());
-      
+
       const response = await fetch(`${API_BASE_URL}/api/projects?${params}`, {
         method: "GET",
         headers: {
@@ -355,7 +367,9 @@ export class BlenderAPI {
   /**
    * Create a new project
    */
-  static async createProject(request: CreateProjectRequest): Promise<ProjectInfo> {
+  static async createProject(
+    request: CreateProjectRequest
+  ): Promise<{ project: ProjectInfo; job_id: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/projects`, {
         method: "POST",
@@ -382,12 +396,15 @@ export class BlenderAPI {
    */
   static async getProject(projectId: string): Promise<ProjectInfo> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/projects/${projectId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -404,15 +421,21 @@ export class BlenderAPI {
   /**
    * Update a project
    */
-  static async updateProject(projectId: string, request: UpdateProjectRequest): Promise<ProjectInfo> {
+  static async updateProject(
+    projectId: string,
+    request: UpdateProjectRequest
+  ): Promise<ProjectInfo> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/projects/${projectId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(request),
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -431,12 +454,15 @@ export class BlenderAPI {
    */
   static async deleteProject(projectId: string): Promise<{ message: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/projects/${projectId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -451,34 +477,14 @@ export class BlenderAPI {
   }
 
   /**
-   * Create a new Blender project (clear scene)
-   */
-  static async newProject(request: NewProjectRequest): Promise<{ project_id: string; job_id: string; message: string }> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/new`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Error creating new project:", error);
-      throw error;
-    }
-  }
-
-  /**
    * Load a project (.blend file)
    */
-  static async loadProject(request: LoadProjectRequest): Promise<{ project_id?: string; job_id: string; file_path: string; message: string }> {
+  static async loadProject(request: LoadProjectRequest): Promise<{
+    project_id?: string;
+    job_id: string;
+    file_path: string;
+    message: string;
+  }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/projects/load`, {
         method: "POST",
@@ -503,7 +509,12 @@ export class BlenderAPI {
   /**
    * Save current project
    */
-  static async saveProject(request: SaveProjectRequest): Promise<{ project_id: string; job_id: string; file_path: string; message: string }> {
+  static async saveProject(request: SaveProjectRequest): Promise<{
+    project_id: string;
+    job_id: string;
+    file_path: string;
+    message: string;
+  }> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/projects/save`, {
         method: "POST",
@@ -552,14 +563,20 @@ export class BlenderAPI {
   /**
    * List jobs for a specific project
    */
-  static async listProjectJobs(projectId: string, limit: number = 50): Promise<Job[]> {
+  static async listProjectJobs(
+    projectId: string,
+    limit: number = 50
+  ): Promise<Job[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/jobs?limit=${limit}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/api/projects/${projectId}/jobs?limit=${limit}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

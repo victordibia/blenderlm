@@ -1,18 +1,91 @@
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, List, Literal, Optional, Union, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from PIL import Image
 
 # Define the type for the task input, allowing string or list containing text and PIL Images
-AgentTask = Union[str, List[Union[str, Image.Image]]]
+class AgentTask(BaseModel):
+    """
+    Represents a task input for an agent, allowing a string or a list of strings and PIL Images.
+    The content field holds the input data.
+    """
+    content: Union[str, List[Union[str, Image.Image]]]
+    
+    model_config = ConfigDict(arbitrary_types_allowed=True) 
+    
+    def to_text(self) -> str:
+        """
+        Returns a human-readable string representation of the content,
+        using <Image> for image objects.
+        """
+        if isinstance(self.content, str):
+            return self.content
+        else:
+            return " ".join([item if isinstance(item, str) else "<Image>" for item in self.content])
 
-# Define the standardized message format
-class AgentMessage(BaseModel):
-    """Standardized message object returned by agent runs."""
+
+# Define a model for structured metadata
+class AgentMessageMetadata(BaseModel):
+    """Structured metadata for an agent message."""
+    usage: Optional[Dict[str, int]] = None # e.g., {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}
+    finish_reason: Optional[str] = None # e.g., "stop", "length", "tool_calls", "error"
+    error: Optional[str] = None # Details of an error if one occurred
+    duration: Optional[float] = None # Duration of the agent run in seconds
+
+    class Config:
+        extra = "allow" # Allow other arbitrary fields
+
+# Base message for all agent messages
+class BaseAgentMessage(BaseModel):
+    """Base message object for agent communication."""
     content: Optional[str] = None
-    role: Literal["user", "assistant", "tool"] = "assistant"
+    role: Literal["user", "assistant", "tool", "event"] = "assistant"
+    metadata: Optional[AgentMessageMetadata] = Field(default_factory=AgentMessageMetadata)
+    type: Optional[str] = None  # e.g., "llm", "event", etc.
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        if self.type:
+            parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+# Message for LLM/agent responses
+class AgentMessage(BaseAgentMessage):
+    """Standardized message object returned by agent runs (LLM/agent responses)."""
     tool_calls: Optional[List[Dict[str, Any]]] = None # For potential tool/function calling
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict) # For extra info like usage, finish reasons
+    type: Optional[str] = "llm"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.tool_calls:
+            parts.append(f"Tool Calls: {self.tool_calls}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+# Message for event-driven or system messages
+class AgentEventMessage(BaseAgentMessage):
+    """Message object for random events or system notifications."""
+    event_type: Optional[str] = None  # e.g., "system", "notification", etc.
+    type: Optional[str] = "event"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.event_type:
+            parts.append(f"Event Type: {self.event_type}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
 
 
 # Define the abstract base class for all agents
@@ -20,21 +93,24 @@ class BaseAgent(ABC):
     """Abstract base class for language model agents."""
 
     @abstractmethod
-    async def run(self, task: AgentTask) -> AgentMessage: # Changed to async def
+    async def run(self, task: AgentTask) -> List[BaseAgentMessage]:
         """
-        Runs the agent with the given task and returns a single response.
+        Runs the agent with the given task and returns a list of all messages
+        generated during the execution, representing the full exchange.
 
         Args:
             task: The input task, which can be a string or a list containing
                   strings and PIL Image objects.
 
         Returns:
-            An AgentMessage object containing the agent's response.
+            A list of BaseAgentMessage objects. The list represents the sequence of
+            messages, often including the initial input, any tool interactions,
+            and the final agent response.
         """
         pass
 
     @abstractmethod
-    async def run_stream(self, task: AgentTask) -> AsyncGenerator[AgentMessage, None]:
+    async def run_stream(self, task: AgentTask) -> AsyncGenerator[BaseAgentMessage, None]:
         """
         Runs the agent with the given task and streams the response.
 
@@ -43,7 +119,7 @@ class BaseAgent(ABC):
                   strings and PIL Image objects.
 
         Yields:
-            AgentMessage objects as they are generated by the agent.
+            BaseAgentMessage objects as they are generated by the agent.
         """
         # The 'yield' statement is needed to make this an async generator method.
         # The actual implementation in subclasses will yield results.

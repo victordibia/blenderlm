@@ -1,19 +1,18 @@
 import React, { useState } from "react";
 import { SendHorizontal, Loader2 } from "lucide-react";
-import BlenderAPI from "../../../utils/blenderapi";
+import BlenderAPI, {
+  ConnectionStatus as ConnectionStatusType,
+} from "../../../utils/blenderapi"; // Import ConnectionStatusType
 
 interface ChatPanelProps {
-  connectionStatus: {
-    connected: boolean;
-    error?: string;
-  };
+  connectionStatus: ConnectionStatusType; // Use the imported tri-state type
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
   const [query, setQuery] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<
-    Array<{ role: string; content: string }>
+    Array<{ role: string; content: string; id?: string }>
   >([
     {
       role: "system",
@@ -24,7 +23,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isProcessing || !connectionStatus.connected) return;
+    if (!query.trim() || isProcessing || connectionStatus.status !== "success")
+      return; // Check for 'success'
 
     // Add user message to chat
     const userMessage = { role: "user", content: query };
@@ -46,7 +46,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
       const response = await BlenderAPI.processChat(query);
 
       // Remove the loading message
-      setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
+      setChatMessages((prev) =>
+        prev.filter((msg) => !msg.id || msg.id !== loadingId)
+      );
 
       if (response.status === "success") {
         // Add all messages from the agent
@@ -56,13 +58,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
         }));
 
         setChatMessages((prev) => [
-          ...prev.filter((msg) => msg.id !== loadingId),
+          ...prev.filter((msg) => !msg.id || msg.id !== loadingId),
           ...assistantMessages,
         ]);
       } else {
         // Add error message
         setChatMessages((prev) => [
-          ...prev.filter((msg) => msg.id !== loadingId),
+          ...prev.filter((msg) => !msg.id || msg.id !== loadingId),
           {
             role: "assistant",
             content: `Error: ${response.error || "Failed to process query"}`,
@@ -72,7 +74,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
     } catch (error) {
       // Add error message
       setChatMessages((prev) => [
-        ...prev.filter((msg) => !("id" in msg)),
+        ...prev.filter((msg) => !msg.id),
         { role: "assistant", content: `Error: ${error}` },
       ]);
     } finally {
@@ -81,31 +83,35 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+    <div className="bg-secondary rounded-lg shadow-sm border border-primary/20 p-4">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold dark:text-white">
+        <h2 className="text-lg font-semibold text-primary">
           Chat with Blender
         </h2>
-        <div className="text-sm text-gray-500 dark:text-gray-400">
-          {connectionStatus.connected ? (
-            <span className="text-green-500">Connected to Blender</span>
-          ) : (
-            <span className="text-red-500">Not connected to Blender</span>
+        <div className="text-sm text-secondary">
+          {connectionStatus.status === "fetching" && (
+            <span className="text-blue-500">Connecting...</span>
+          )}
+          {connectionStatus.status === "success" && (
+            <span className="text-accent">Connected to Blender</span>
+          )}
+          {connectionStatus.status === "failed" && (
+            <span className="text-primary/70">Not connected to Blender</span>
           )}
         </div>
       </div>
 
       {/* Chat messages */}
-      <div className="mb-4 max-h-64 overflow-y-auto space-y-2 p-2 border rounded dark:border-gray-700">
+      <div className="mb-4 max-h-64 overflow-y-auto space-y-2 p-2 border rounded border-primary/20">
         {chatMessages.map((msg, index) => (
           <div
             key={index}
             className={`p-2 rounded ${
               msg.role === "user"
-                ? "bg-blue-100 dark:bg-blue-900 ml-8"
+                ? "bg-accent/10 text-accent ml-8"
                 : msg.role === "system"
-                ? "bg-gray-100 dark:bg-gray-700 italic text-sm"
-                : "bg-gray-100 dark:bg-gray-700 mr-8"
+                ? "bg-primary/5 text-primary/70 italic text-sm"
+                : "bg-primary/10 text-primary mr-8"
             }`}
           >
             <div className="text-xs font-bold mb-1">
@@ -126,25 +132,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          disabled={isProcessing || !connectionStatus.connected}
+          disabled={isProcessing || connectionStatus.status !== "success"} // Disable if not 'success'
           placeholder={
-            !connectionStatus.connected
+            connectionStatus.status === "fetching"
+              ? "Connecting to Blender..."
+              : connectionStatus.status === "failed"
               ? "Connect to Blender to chat"
               : isProcessing
               ? "Processing..."
               : "Ask me to create or modify objects..."
           }
-          className="flex-1 p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          className="flex-1 p-2 border rounded border-primary/30 bg-secondary text-primary focus:outline-none focus:ring-1 focus:ring-accent"
         />
         <button
           type="submit"
           disabled={
-            isProcessing || !connectionStatus.connected || !query.trim()
+            isProcessing ||
+            connectionStatus.status !== "success" ||
+            !query.trim() // Disable if not 'success'
           }
-          className={`p-2 rounded text-white ${
-            isProcessing || !connectionStatus.connected || !query.trim()
-              ? "bg-gray-400"
-              : "bg-blue-500 hover:bg-blue-600"
+          className={`p-2 rounded text-secondary ${
+            isProcessing ||
+            connectionStatus.status !== "success" ||
+            !query.trim()
+              ? "bg-primary/40"
+              : "bg-primary hover:bg-primary/80"
           }`}
         >
           {isProcessing ? (
@@ -157,9 +169,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
 
       {/* Examples */}
       <div className="mt-4">
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-          Try asking:
-        </p>
+        <p className="text-xs text-secondary mb-1">Try asking:</p>
         <div className="flex flex-wrap gap-2">
           {[
             "Add a red cube",
@@ -170,8 +180,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
             <button
               key={index}
               onClick={() => setQuery(example)}
-              disabled={isProcessing || !connectionStatus.connected}
-              className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+              disabled={isProcessing || connectionStatus.status !== "success"} // Disable if not 'success'
+              className="text-xs bg-secondary px-2 py-1 rounded hover:bg-primary/10 disabled:opacity-50 text-primary border border-primary/20"
             >
               {example}
             </button>

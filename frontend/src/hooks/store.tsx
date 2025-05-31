@@ -103,7 +103,7 @@ export const useConfigStore = create<IConfigState>()(
 
       // Sidebar state and actions
       sidebar: {
-        isExpanded: true,
+        isExpanded: false,
         isPinned: false,
       },
       setSidebarState: (newState) =>

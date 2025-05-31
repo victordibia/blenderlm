@@ -6,7 +6,6 @@ import BlenderAPI, { ConnectionStatus, Job } from "../../../utils/blenderapi";
 import ConnectionStatusComponent from "./ConnectionStatus";
 import ViewportPanel from "./ViewportPanel";
 import ControlsPanel from "./ControlsPanel";
-import SceneInfoPanel from "../../SceneInfoPanel"; // Corrected path assuming SceneInfoPanel is one level up
 
 // Define ActionFeedback and CodeExamples types locally
 interface ActionFeedback {
@@ -24,9 +23,9 @@ const ManualControlLab: React.FC = () => {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
-    connected: false,
+    status: "fetching", // Initial state
   });
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
+  const [isCheckingConnection, setIsCheckingConnection] = useState(true); // Start with true as we fetch on mount
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [renderedImage, setRenderedImage] = useState<string | null>(null);
   const [activeImageSource, setActiveImageSource] = useState<
@@ -214,12 +213,12 @@ print("Animation keyframes created - use the timeline to view the animation")`,
   // Initial data loading
   useEffect(() => {
     const initializeWorkspace = async () => {
+      // checkConnection will set the status to fetching, then success/failed
       await checkConnection();
-
-      if (connectionStatus.connected) {
-        refreshViewport();
-        fetchJobHistory();
-      }
+      // No need to check connectionStatus.connected here, checkConnection handles it
+      // and subsequent actions should rely on the new status values.
+      // If the initial checkConnection leads to "success", then refresh.
+      // This logic might need adjustment based on how checkConnection updates status.
     };
 
     initializeWorkspace();
@@ -228,17 +227,20 @@ print("Animation keyframes created - use the timeline to view the animation")`,
   // Check connection with Blender
   const checkConnection = async () => {
     setIsCheckingConnection(true);
+    setConnectionStatus({ status: "fetching" }); // Set to fetching at the start
     try {
       const status = await BlenderAPI.checkConnection();
-      setConnectionStatus(status);
-
+      setConnectionStatus(status); // status from API will be {status: "success"} or {status: "failed", error: "..."}
       // If connection successful, auto-refresh viewport
-      if (status.connected) {
+      if (status.status === "success") {
         refreshViewport();
+        fetchJobHistory(); // Fetch history on successful initial connection
       }
     } catch (error) {
+      // The API.checkConnection should ideally return the {status: "failed", error: "..."} object
+      // But if it throws an error before that, we catch it here.
       setConnectionStatus({
-        connected: false,
+        status: "failed",
         error: `Cannot connect to BlenderLM API: ${error}`,
       });
     } finally {
@@ -282,7 +284,7 @@ print("Animation keyframes created - use the timeline to view the animation")`,
     actionName: string,
     skipViewportRefresh: boolean = false
   ) => {
-    if (!connectionStatus.connected) {
+    if (connectionStatus.status !== "success") {
       showFeedback("Not connected to Blender", "error");
       return;
     }
@@ -521,7 +523,11 @@ print("Animation keyframes created - use the timeline to view the animation")`,
   // Handle chat submission
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || isProcessingChat || !connectionStatus.connected)
+    if (
+      !chatInput.trim() ||
+      isProcessingChat ||
+      connectionStatus.status !== "success"
+    )
       return;
 
     // Add user message to chat
@@ -551,13 +557,11 @@ print("Animation keyframes created - use the timeline to view the animation")`,
         // Add the single assistant message from response.response.content
         const assistantMessage = {
           role: "assistant",
-          content: response.response.content || "Assistant processed the request.",
+          content:
+            response.response.content || "Assistant processed the request.",
         };
 
-        setChatMessages((prev) => [
-          ...prev,
-          assistantMessage,
-        ]);
+        setChatMessages((prev) => [...prev, assistantMessage]);
 
         // Refresh viewport to show any changes made
         await refreshViewport();
@@ -569,7 +573,11 @@ print("Animation keyframes created - use the timeline to view the animation")`,
           ...prev,
           {
             role: "assistant",
-            content: `Error: ${response.error || response.detail || "Failed to process query or invalid response structure"}`,
+            content: `Error: ${
+              response.error ||
+              response.detail ||
+              "Failed to process query or invalid response structure"
+            }`,
           },
         ]);
       }
@@ -623,15 +631,18 @@ print("Animation keyframes created - use the timeline to view the animation")`,
       {/* Connection Status Component - Always visible */}
       <ConnectionStatusComponent
         connectionStatus={connectionStatus}
-        isCheckingConnection={isCheckingConnection}
+        isCheckingConnection={isCheckingConnection} // This prop might become redundant
         checkConnection={checkConnection}
       />
 
       {/* Main Content: Side by Side Layout - Conditionally rendered */}
-      {connectionStatus.connected && (
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 flex-grow">
-          {/* Left Panel: Controls */}
-          <div className="flex flex-col xl:col-span-2">
+      {connectionStatus.status === "success" && (
+        <div className="flex flex-col xl:flex-row gap-6 flex-grow">
+          {/* Left Panel: Controls and Project Manager */}
+          <div className="flex flex-col flex-1 min-w-0 gap-6">
+            {/* Project Manager Panel */}
+
+            {/* Controls Panel */}
             <ControlsPanel
               connectionStatus={connectionStatus}
               isExecutingCommand={isExecutingCommand}
@@ -658,11 +669,13 @@ print("Animation keyframes created - use the timeline to view the animation")`,
               handleGetSceneInfo={handleGetSceneInfo}
               handleClearScene={handleClearScene}
               handleAddCamera={handleAddCamera}
+              showFeedback={showFeedback}
+              executeBlenderCommand={executeBlenderCommand}
             />
           </div>
 
           {/* Right Panel: Viewport and Scene Info */}
-          <div className="flex flex-col xl:col-span-3 gap-6">
+          <div className="flex flex-col flex-shrink-0 max-w-[600px] w-full xl:w-[600px] gap-6 items-center justify-center">
             {/* Viewport */}
             <ViewportPanel
               connectionStatus={connectionStatus}
@@ -676,9 +689,6 @@ print("Animation keyframes created - use the timeline to view the animation")`,
               setIsViewportMinimized={setIsViewportMinimized}
               errorMessage={errorMessage}
             />
-
-            {/* Scene Info Panel */}
-            {connectionStatus.connected && <SceneInfoPanel />}
           </div>
         </div>
       )}

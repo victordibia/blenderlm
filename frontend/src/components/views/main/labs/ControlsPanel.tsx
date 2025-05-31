@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   PlayCircle,
   RefreshCcw,
@@ -14,11 +14,16 @@ import {
   MessageSquare,
   SendHorizontal,
   Loader2,
+  Database,
 } from "lucide-react";
-import { Tabs } from "antd"; // Import Tabs from antd
-import { ConnectionStatus, Job } from "../../../utils/blenderapi";
+import { Tabs, Button } from "antd";
+import BlenderAPI, {
+  ConnectionStatus,
+  Job,
+  ProjectInfo,
+} from "../../../utils/blenderapi";
+import ProjectManagerPanel from "./ProjectManagerPanel";
 
-// Type for code examples
 interface CodeExamples {
   [key: string]: string;
 }
@@ -49,6 +54,12 @@ interface ControlsPanelProps {
   handleGetSceneInfo: () => void;
   handleClearScene: () => void;
   handleAddCamera: () => void;
+  showFeedback: (message: string, type: "success" | "error" | "info") => void;
+  executeBlenderCommand: (
+    commandFn: () => Promise<{ job_id: string }>,
+    actionName: string,
+    skipViewportRefresh?: boolean
+  ) => void;
 }
 
 const ControlsPanel: React.FC<ControlsPanelProps> = ({
@@ -77,13 +88,52 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   handleGetSceneInfo,
   handleClearScene,
   handleAddCamera,
+  showFeedback,
+  executeBlenderCommand,
 }) => {
-  // Fixed type for setCodeExample function
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(
+    null
+  );
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [fileUploadPath, setFileUploadPath] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
+  useEffect(() => {
+    if (connectionStatus.status === "success") {
+      loadProjects();
+      getCurrentProjectInfo();
+    }
+  }, [connectionStatus.status]);
+
   const setCodeExample = (exampleKey: string) => {
     setInput(codeExamples[exampleKey]);
   };
 
-  // Example chat queries
+  const loadProjects = async () => {
+    setIsLoadingProjects(true);
+    try {
+      const response = await BlenderAPI.listProjects("active", 20);
+      setProjects(response.projects);
+    } catch (error) {
+      showFeedback(`Error loading projects: ${error}`, "error");
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  const getCurrentProjectInfo = async () => {
+    try {
+      showFeedback("Project info updated", "info");
+    } catch (error) {
+      console.error("Error getting current project info:", error);
+    }
+  };
+
   const exampleQueries = [
     "Add a red cube",
     "Create a blue sphere",
@@ -97,8 +147,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
         <Command className="h-5 w-5 text-accent" />
         Blender Controls
       </h3>
-
-      {/* Use Antd Tabs */}
       <Tabs defaultActiveKey="1">
         <Tabs.TabPane
           tab={
@@ -108,7 +156,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
           }
           key="1"
         >
-          {/* Chat Section Content */}
           <div className="border rounded-lg overflow-hidden">
             <div className="p-3 flex justify-between items-center bg-primary/5">
               <div className="flex items-center gap-2">
@@ -117,7 +164,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               </div>
             </div>
             <div className="p-3">
-              {/* Chat messages */}
               {chatMessages.length > 0 && (
                 <div className="mb-3 max-h-32 overflow-y-auto border rounded p-2">
                   {chatMessages.slice(-3).map((msg, index) => (
@@ -143,16 +189,16 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   ))}
                 </div>
               )}
-
-              {/* Input form */}
               <form onSubmit={handleChatSubmit} className="flex gap-2">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  disabled={isProcessingChat || !connectionStatus.connected}
+                  disabled={
+                    isProcessingChat || connectionStatus.status !== "success"
+                  }
                   placeholder={
-                    !connectionStatus.connected
+                    connectionStatus.status !== "success"
                       ? "Connect to Blender to chat"
                       : isProcessingChat
                       ? "Processing..."
@@ -164,12 +210,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   type="submit"
                   disabled={
                     isProcessingChat ||
-                    !connectionStatus.connected ||
+                    connectionStatus.status !== "success" ||
                     !chatInput.trim()
                   }
                   className={`p-2 rounded text-white ${
                     isProcessingChat ||
-                    !connectionStatus.connected ||
+                    connectionStatus.status !== "success" ||
                     !chatInput.trim()
                       ? "bg-primary/40"
                       : "bg-primary hover:bg-primary/80"
@@ -182,8 +228,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   )}
                 </button>
               </form>
-
-              {/* Examples */}
               <div className="mt-2">
                 <p className="text-xs text-primary/60 mb-1">Try asking:</p>
                 <div className="flex flex-wrap gap-2">
@@ -191,7 +235,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                     <button
                       key={index}
                       onClick={() => setChatInput(example)}
-                      disabled={isProcessingChat || !connectionStatus.connected}
+                      disabled={
+                        isProcessingChat ||
+                        connectionStatus.status !== "success"
+                      }
                       className="text-xs bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded text-primary disabled:opacity-50"
                     >
                       {example}
@@ -202,7 +249,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
             </div>
           </div>
         </Tabs.TabPane>
-
         <Tabs.TabPane
           tab={
             <span className="flex items-center gap-1">
@@ -211,7 +257,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
           }
           key="2"
         >
-          {/* Action Presets Content */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
               <div className="flex items-center justify-between mb-2">
@@ -221,10 +266,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Add a sphere with random position
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleAddRandomSphere}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -232,7 +280,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <Plus className="h-4 w-4" />
                 )}
                 Add Sphere
-              </button>
+              </Button>
             </div>
 
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
@@ -243,10 +291,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Add a cube with random position
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleAddRandomCube}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -254,10 +305,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <Plus className="h-4 w-4" />
                 )}
                 Add Cube
-              </button>
+              </Button>
             </div>
 
-            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
+            <div className="hidden border rounded-lg p-3 hover:bg-primary/5 transition">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium">Random Material</h3>
                 <Layers className="h-5 w-5 text-accent" />
@@ -265,10 +316,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Apply a random color material
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleAddRandomMaterial}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -276,7 +330,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <Plus className="h-4 w-4" />
                 )}
                 Apply Material
-              </button>
+              </Button>
             </div>
 
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
@@ -287,10 +341,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Create a full render of the scene
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleRenderScene}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -298,7 +355,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <PlayCircle className="h-4 w-4" />
                 )}
                 Render
-              </button>
+              </Button>
             </div>
 
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
@@ -309,10 +366,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Get current scene information
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleGetSceneInfo}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -320,7 +380,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <RefreshCcw className="h-4 w-4" />
                 )}
                 Get Info
-              </button>
+              </Button>
             </div>
 
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
@@ -331,10 +391,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Delete all objects from the scene
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleClearScene}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -342,7 +405,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <RefreshCcw className="h-4 w-4" />
                 )}
                 Clear Scene
-              </button>
+              </Button>
             </div>
 
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
@@ -353,10 +416,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               <p className="text-sm text-primary/60 mb-3">
                 Add a new camera to the scene
               </p>
-              <button
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleAddCamera}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -364,11 +430,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                   <Plus className="h-4 w-4" />
                 )}
                 Add Camera
-              </button>
+              </Button>
             </div>
           </div>
         </Tabs.TabPane>
-
         <Tabs.TabPane
           tab={
             <span className="flex items-center gap-1">
@@ -377,9 +442,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
           }
           key="3"
         >
-          {/* Python Code Section Content */}
           <div className="p-3 border rounded-lg">
-            {/* Code Examples */}
             <div className="mb-3">
               <label className="text-sm font-medium block mb-2">
                 Example Code Templates:
@@ -405,7 +468,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 </button>
               </div>
             </div>
-
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -413,12 +475,13 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               className="w-full mb-3 p-3 border rounded-md font-mono text-sm resize-none focus:outline-none focus:ring-1 focus:ring-accent h-56 bg-white dark:bg-gray-800 text-primary dark:text-gray-200 dark:border-gray-700"
               rows={6}
             />
-
             <div className="flex gap-2">
               <button
                 className="flex items-center gap-1 px-3 py-2 bg-primary hover:bg-primary/80 text-secondary rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={executeCode}
-                disabled={isExecutingCommand || !connectionStatus.connected}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
               >
                 {isExecutingCommand ? (
                   <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -427,7 +490,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 )}
                 Run Code
               </button>
-
               <button
                 className="flex items-center gap-1 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-md"
                 onClick={() => setInput("")}
@@ -435,7 +497,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 Clear
               </button>
             </div>
-
             {output && (
               <div className="mt-3">
                 <div className="flex justify-between items-center mb-1">
@@ -454,9 +515,23 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
             )}
           </div>
         </Tabs.TabPane>
+        <Tabs.TabPane
+          tab={
+            <span className="flex items-center gap-1">
+              <Database className="h-4 w-4" /> Projects
+            </span>
+          }
+          key="4"
+        >
+          <ProjectManagerPanel
+            connectionStatus={connectionStatus}
+            isExecutingCommand={isExecutingCommand}
+            showFeedback={showFeedback}
+            executeBlenderCommand={executeBlenderCommand}
+            refreshViewport={async () => {}}
+          />
+        </Tabs.TabPane>
       </Tabs>
-
-      {/* Job History Section (Collapsible) - Remains outside tabs */}
       <div className="border rounded-lg overflow-hidden mt-2">
         <button
           className="w-full p-3 flex justify-between items-center bg-primary/5 hover:bg-primary/10 transition"
@@ -475,7 +550,6 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
             <ChevronDown className="h-5 w-5 text-primary/60" />
           )}
         </button>
-
         {isJobHistoryOpen && (
           <div className="p-3">
             {isLoadingJobHistory ? (
