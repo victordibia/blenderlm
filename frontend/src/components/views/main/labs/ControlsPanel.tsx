@@ -23,6 +23,7 @@ import BlenderAPI, {
   ProjectInfo,
 } from "../../../utils/blenderapi";
 import ProjectManagerPanel from "./ProjectManagerPanel";
+import ChatPanel from "./ChatPanel";
 
 interface CodeExamples {
   [key: string]: string;
@@ -36,17 +37,12 @@ interface ControlsPanelProps {
   jobHistory: Job[];
   input: string;
   output: string;
-  chatInput: string;
-  chatMessages: Array<{ role: string; content: string; id?: string }>;
-  isProcessingChat: boolean;
   codeExamples: CodeExamples;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   setOutput: React.Dispatch<React.SetStateAction<string>>;
-  setChatInput: React.Dispatch<React.SetStateAction<string>>;
   setIsJobHistoryOpen: React.Dispatch<React.SetStateAction<boolean>>;
   fetchJobHistory: () => void;
   executeCode: () => void;
-  handleChatSubmit: (e: React.FormEvent) => void;
   handleAddRandomSphere: () => void;
   handleAddRandomCube: () => void;
   handleAddRandomMaterial: () => void;
@@ -60,6 +56,7 @@ interface ControlsPanelProps {
     actionName: string,
     skipViewportRefresh?: boolean
   ) => void;
+  onChatComplete?: () => void; // Add this prop
 }
 
 const ControlsPanel: React.FC<ControlsPanelProps> = ({
@@ -70,17 +67,12 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   jobHistory,
   input,
   output,
-  chatInput,
-  chatMessages,
-  isProcessingChat,
   codeExamples,
   setInput,
   setOutput,
-  setChatInput,
   setIsJobHistoryOpen,
   fetchJobHistory,
   executeCode,
-  handleChatSubmit,
   handleAddRandomSphere,
   handleAddRandomCube,
   handleAddRandomMaterial,
@@ -90,6 +82,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   handleAddCamera,
   showFeedback,
   executeBlenderCommand,
+  onChatComplete,
 }) => {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(
@@ -156,98 +149,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
           }
           key="1"
         >
-          <div className="border rounded-lg overflow-hidden">
-            <div className="p-3 flex justify-between items-center bg-primary/5">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-accent" />
-                <span className="font-medium">Chat with Blender</span>
-              </div>
-            </div>
-            <div className="p-3">
-              {chatMessages.length > 0 && (
-                <div className="mb-3 max-h-32 overflow-y-auto border rounded p-2">
-                  {chatMessages.slice(-3).map((msg, index) => (
-                    <div
-                      key={index}
-                      className={`p-2 mb-1 rounded ${
-                        msg.role === "user"
-                          ? "bg-primary/10 text-primary"
-                          : msg.role === "system"
-                          ? "bg-primary/5 text-primary/70 italic text-sm"
-                          : "bg-accent/10 text-accent"
-                      }`}
-                    >
-                      <div className="text-xs font-medium mb-0.5">
-                        {msg.role === "user"
-                          ? "You"
-                          : msg.role === "system"
-                          ? "System"
-                          : "Assistant"}
-                      </div>
-                      <div className="text-sm">{msg.content}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <form onSubmit={handleChatSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  disabled={
-                    isProcessingChat || connectionStatus.status !== "success"
-                  }
-                  placeholder={
-                    connectionStatus.status !== "success"
-                      ? "Connect to Blender to chat"
-                      : isProcessingChat
-                      ? "Processing..."
-                      : "Ask me to create or modify objects..."
-                  }
-                  className="flex-1 p-2 border rounded focus:outline-none focus:ring-1 focus:ring-accent text-primary dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                />
-                <button
-                  type="submit"
-                  disabled={
-                    isProcessingChat ||
-                    connectionStatus.status !== "success" ||
-                    !chatInput.trim()
-                  }
-                  className={`p-2 rounded text-white ${
-                    isProcessingChat ||
-                    connectionStatus.status !== "success" ||
-                    !chatInput.trim()
-                      ? "bg-primary/40"
-                      : "bg-primary hover:bg-primary/80"
-                  }`}
-                >
-                  {isProcessingChat ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <SendHorizontal className="h-5 w-5" />
-                  )}
-                </button>
-              </form>
-              <div className="mt-2">
-                <p className="text-xs text-primary/60 mb-1">Try asking:</p>
-                <div className="flex flex-wrap gap-2">
-                  {exampleQueries.map((example, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setChatInput(example)}
-                      disabled={
-                        isProcessingChat ||
-                        connectionStatus.status !== "success"
-                      }
-                      className="text-xs bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded text-primary disabled:opacity-50"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChatPanel
+            connectionStatus={connectionStatus}
+            onChatComplete={onChatComplete}
+          />
         </Tabs.TabPane>
         <Tabs.TabPane
           tab={

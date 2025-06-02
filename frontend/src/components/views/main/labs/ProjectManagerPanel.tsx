@@ -8,10 +8,14 @@ import {
   Clock,
   Database,
 } from "lucide-react";
-import BlenderAPI, { ConnectionStatus, ProjectInfo } from "../../../utils/blenderapi";
+import { Tabs } from "antd";
+import BlenderAPI, {
+  ConnectionStatus,
+  ProjectInfo,
+} from "../../../utils/blenderapi";
 
 interface ProjectManagerPanelProps {
-  connectionStatus:  ConnectionStatus
+  connectionStatus: ConnectionStatus;
   isExecutingCommand: boolean;
   showFeedback: (message: string, type: "success" | "error" | "info") => void;
   executeBlenderCommand: (
@@ -161,16 +165,125 @@ const ProjectManagerPanel: React.FC<ProjectManagerPanelProps> = ({
   };
 
   return (
-    <div className="bg-secondary rounded-lg shadow-sm border border-primary/20 p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-primary flex items-center gap-2">
-          <Database className="h-5 w-5 text-accent" />
-          Project Manager
-        </h3>
-        <div className="flex gap-2">
+    <div className="  rounded-lg shadow-sm border border-primary/20 p-4">
+      {/* Tabs for Create and Load Project */}
+      <Tabs defaultActiveKey="create" className="mb-4">
+        <Tabs.TabPane
+          tab={
+            <span className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-accent" />
+              Create Project
+            </span>
+          }
+          key="create"
+        >
+          {/* Create Project Section */}
+          <div className="p-3 border border-primary/20 rounded-md bg-primary/5">
+            <h4 className="font-medium text-primary mb-3 flex items-center gap-2">
+              <Database className="h-4 w-4 text-accent" />
+              Create Project
+            </h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-primary/70 mb-1">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                  placeholder="Enter project name"
+                  disabled={isLoadingProjects}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-primary/70 mb-1">
+                  Description (optional)
+                </label>
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(e) => setNewProjectDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                  placeholder="Enter project description"
+                  rows={2}
+                  disabled={isLoadingProjects}
+                />
+              </div>
+              <button
+                onClick={handleCreateProject}
+                disabled={isLoadingProjects || !newProjectName.trim()}
+                className="w-full px-3 py-2 bg-accent text-white rounded-md hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+              >
+                <Database className="h-4 w-4" />
+                Create Project
+              </button>
+            </div>
+          </div>
+        </Tabs.TabPane>
+        <Tabs.TabPane
+          tab={
+            <span className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Load Project
+            </span>
+          }
+          key="load"
+        >
+          {/* Load Project Section */}
+          <div className="p-3 border border-primary/20 rounded-md">
+            <h4 className="font-medium text-primary mb-3 flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Load Project
+            </h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-primary/70 mb-1">
+                  Select Project
+                </label>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                  disabled={connectionStatus.status !== "success"}
+                >
+                  <option value="">Choose a project...</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}{" "}
+                      {project.file_path
+                        ? `(${project.file_path})`
+                        : "(No file)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={handleLoadProject}
+                disabled={
+                  connectionStatus.status !== "success" ||
+                  isExecutingCommand ||
+                  !selectedProjectId
+                }
+                className="w-full px-3 py-2 bg-primary text-secondary rounded-md hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Load Project
+              </button>
+            </div>
+          </div>
+        </Tabs.TabPane>
+      </Tabs>
+
+      {/* Projects List */}
+      <div>
+        <h4 className="font-medium text-primary mb-3">
+          Recent Projects{" "}
           <button
             onClick={loadProjects}
-            disabled={connectionStatus.status !== "success" || isLoadingProjects}
+            disabled={
+              connectionStatus.status !== "success" || isLoadingProjects
+            }
             className="p-2 text-primary/60 hover:text-primary hover:bg-primary/5 rounded-md transition-colors"
             title="Refresh projects"
           >
@@ -178,97 +291,7 @@ const ProjectManagerPanel: React.FC<ProjectManagerPanelProps> = ({
               className={`h-4 w-4 ${isLoadingProjects ? "animate-spin" : ""}`}
             />
           </button>
-        </div>
-      </div>
-
-      {/* Create Project Section */}
-      <div className="mb-4 p-3 border border-primary/20 rounded-md bg-primary/5">
-        <h4 className="font-medium text-primary mb-3 flex items-center gap-2">
-          <Database className="h-4 w-4 text-accent" />
-          Create Project
         </h4>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-primary/70 mb-1">
-              Project Name
-            </label>
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              placeholder="Enter project name"
-              disabled={isLoadingProjects}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-primary/70 mb-1">
-              Description (optional)
-            </label>
-            <textarea
-              value={newProjectDescription}
-              onChange={(e) => setNewProjectDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              placeholder="Enter project description"
-              rows={2}
-              disabled={isLoadingProjects}
-            />
-          </div>
-          <button
-            onClick={handleCreateProject}
-            disabled={isLoadingProjects || !newProjectName.trim()}
-            className="w-full px-3 py-2 bg-accent text-white rounded-md hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-          >
-            <Database className="h-4 w-4" />
-            Create Project
-          </button>
-        </div>
-      </div>
-
-      {/* Load Project Section */}
-      <div className="mb-4 p-3 border border-primary/20 rounded-md">
-        <h4 className="font-medium text-primary mb-3 flex items-center gap-2">
-          <FolderOpen className="h-4 w-4" />
-          Load Project
-        </h4>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-primary/70 mb-1">
-              Select Project
-            </label>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="w-full px-3 py-2 border border-primary/30 rounded-md focus:outline-none focus:ring-1 focus:ring-accent dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              disabled={connectionStatus.status !== "success"}
-            >
-              <option value="">Choose a project...</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}{" "}
-                  {project.file_path ? `(${project.file_path})` : "(No file)"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={handleLoadProject}
-            disabled={
-              connectionStatus.status !== "success" ||
-              isExecutingCommand ||
-              !selectedProjectId
-            }
-            className="w-full px-3 py-2 bg-primary text-secondary rounded-md hover:bg-primary/80 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Load Project
-          </button>
-        </div>
-      </div>
-
-      {/* Projects List */}
-      <div>
-        <h4 className="font-medium text-primary mb-3">Recent Projects</h4>
         {isLoadingProjects ? (
           <div className="text-center text-primary/60 py-4">
             <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
@@ -279,39 +302,32 @@ const ProjectManagerPanel: React.FC<ProjectManagerPanelProps> = ({
             No projects found. Please create a project in Blender first.
           </div>
         ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto">
+          <div className="space-y-1 max-h-60 overflow-y-auto">
             {projects.map((project) => (
               <div
                 key={project.id}
-                className="flex items-center justify-between p-3 border border-primary/20 rounded-md hover:bg-primary/5"
+                className="flex items-center justify-between px-2 py-1 border border-primary/10 rounded hover:bg-primary/5 text-sm"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-medium text-primary truncate">
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-medium text-primary truncate">
                       {project.name}
-                    </h5>
+                    </span>
                     {project.file_path && (
-                      <span className="text-xs bg-accent/10 text-accent px-2 py-1 rounded">
+                      <span className="text-xs bg-accent/10 text-accent px-1 rounded">
                         Saved
                       </span>
                     )}
                   </div>
-                  {project.description && (
-                    <p className="text-sm text-primary/60 truncate">
-                      {project.description}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-4 text-xs text-primary/50 mt-1">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatDate(project.updated_at)}
-                    </span>
+                  <div className="flex items-center gap-2 text-xs text-primary/50 truncate">
+                    <Clock className="h-3 w-3" />
+                    {formatDate(project.updated_at)}
                     {project.file_path && (
                       <span
                         className="truncate max-w-32"
                         title={project.file_path}
                       >
-                        {project.file_path}
+                        • {project.file_path}
                       </span>
                     )}
                   </div>
@@ -319,7 +335,10 @@ const ProjectManagerPanel: React.FC<ProjectManagerPanelProps> = ({
                 <div className="flex items-center gap-1 ml-2">
                   <button
                     onClick={() => handleSaveProject(project.id)}
-                    disabled={connectionStatus.status !== "success" || isExecutingCommand}
+                    disabled={
+                      connectionStatus.status !== "success" ||
+                      isExecutingCommand
+                    }
                     className="p-1 text-accent hover:text-accent/80 hover:bg-accent/10 rounded transition-colors"
                     title="Save project"
                   >

@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 blenderlm_jobs.db 
 blenderlm_api.log 
+blenderlm.db
 *.DS_Store
 **.DS_Store 
 # C extensions

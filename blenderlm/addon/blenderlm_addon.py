@@ -670,6 +670,20 @@ class BlenderLMServer:
     def render_scene(self, output_path=None, resolution_x=None, resolution_y=None, return_base64=True, max_dimension=1024):
         """Render the current scene"""
         try:
+            # Ensure there is at least one camera in the scene and set it as active
+            cameras = [obj for obj in bpy.context.scene.objects if obj.type == 'CAMERA']
+            if not cameras:
+                # Add a default camera if none exists
+                bpy.ops.object.camera_add(location=(7.48, -6.51, 5.34))
+                camera = bpy.context.active_object
+                bpy.context.scene.camera = camera
+                print("No camera found. Added a default camera and set as active.")
+            else:
+                # Set the first camera as the active camera if not already set
+                if bpy.context.scene.camera is None or bpy.context.scene.camera not in cameras:
+                    bpy.context.scene.camera = cameras[0]
+                    print(f"Set existing camera '{cameras[0].name}' as active camera.")
+
             if resolution_x is not None:
                 bpy.context.scene.render.resolution_x = resolution_x
             
@@ -786,6 +800,10 @@ class BlenderLMServer:
         try:
             bpy.ops.object.camera_add(location=location, rotation=rotation)
             camera = bpy.context.object
+            # Set as active camera if there is no active camera
+            if bpy.context.scene.camera is None:
+                bpy.context.scene.camera = camera
+                print(f"Set '{camera.name}' as the active camera.")
             return {
                 "name": camera.name,
                 "location": list(camera.location),

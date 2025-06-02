@@ -1,93 +1,96 @@
-import React, { useState } from "react";
-import { SendHorizontal, Loader2 } from "lucide-react";
-import BlenderAPI, {
-  ConnectionStatus as ConnectionStatusType,
-} from "../../../utils/blenderapi"; // Import ConnectionStatusType
+import React, { useState, useRef, useEffect } from "react";
+import { SendHorizontal, Loader2, User, Bot, AlertCircle } from "lucide-react";
+import BlenderAPI, { ConnectionStatus } from "../../../utils/blenderapi";
 
 interface ChatPanelProps {
-  connectionStatus: ConnectionStatusType; // Use the imported tri-state type
+  connectionStatus: ConnectionStatus;
+  onChatComplete?: () => void; // Optional callback prop
 }
 
-const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({
+  connectionStatus,
+  onChatComplete,
+}) => {
   const [query, setQuery] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [chatMessages, setChatMessages] = useState<
-    Array<{ role: string; content: string; id?: string }>
-  >([
-    {
-      role: "system",
-      content:
-        "Hello! I'm your Blender assistant. Try asking me to create objects like 'Add a red cube' or 'Create a blue sphere at position [1, 2, 0]'.",
-    },
-  ]);
+    Array<{ role: string; content: string; id?: string; error?: boolean }>
+  >([]);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Smooth scroll to bottom on new message
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim() || isProcessing || connectionStatus.status !== "success")
-      return; // Check for 'success'
+      return;
 
-    // Add user message to chat
     const userMessage = { role: "user", content: query };
     setChatMessages((prev) => [...prev, userMessage]);
-
-    // Clear input and set processing state
     setQuery("");
     setIsProcessing(true);
 
-    try {
-      // Add a temporary loading message
-      const loadingId = Date.now().toString();
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Thinking...", id: loadingId },
-      ]);
+    // Auto-focus input after sending
+    setTimeout(() => inputRef.current?.focus(), 100);
 
-      // Process the query
-      const response = await BlenderAPI.processChat(query);
-
-      // Remove the loading message
-      setChatMessages((prev) =>
-        prev.filter((msg) => !msg.id || msg.id !== loadingId)
-      );
-
-      if (response.status === "success") {
-        // Add all messages from the agent
-        const assistantMessages = response.messages.map((msg: any) => ({
-          role: "assistant",
-          content: msg.content,
-        }));
-
+    // Start WebSocket streaming
+    const { ws, sendCancel } = BlenderAPI.streamChatWS(
+      query,
+      (data) => {
         setChatMessages((prev) => [
-          ...prev.filter((msg) => !msg.id || msg.id !== loadingId),
-          ...assistantMessages,
+          ...prev,
+          { role: "assistant", content: data.content },
         ]);
-      } else {
-        // Add error message
+        if (
+          data.event_type === "error" ||
+          data.metadata?.finish_reason === "stop" ||
+          data.metadata?.finish_reason === "error"
+        ) {
+          setIsProcessing(false);
+          ws.close();
+          if (onChatComplete) onChatComplete();
+        }
+      },
+      (err) => {
         setChatMessages((prev) => [
-          ...prev.filter((msg) => !msg.id || msg.id !== loadingId),
-          {
-            role: "assistant",
-            content: `Error: ${response.error || "Failed to process query"}`,
-          },
+          ...prev,
+          { role: "assistant", content: `Error: ${err}`, error: true },
         ]);
+        setIsProcessing(false);
+        ws.close();
+        if (onChatComplete) onChatComplete();
       }
-    } catch (error) {
-      // Add error message
-      setChatMessages((prev) => [
-        ...prev.filter((msg) => !msg.id),
-        { role: "assistant", content: `Error: ${error}` },
-      ]);
-    } finally {
-      setIsProcessing(false);
+    );
+    wsRef.current = ws;
+  };
+
+  // Optional: Cancel button handler
+  const handleCancel = () => {
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: "cancel" }));
     }
+    setIsProcessing(false);
   };
 
   return (
-    <div className="bg-secondary rounded-lg shadow-sm border border-primary/20 p-4">
+    <div className="  rounded-lg shadow-sm border border-primary/20 p-4">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-primary">
-          Chat with Blender
-        </h2>
         <div className="text-sm text-secondary">
           {connectionStatus.status === "fetching" && (
             <span className="text-blue-500">Connecting...</span>
@@ -102,33 +105,96 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
       </div>
 
       {/* Chat messages */}
-      <div className="mb-4 max-h-64 overflow-y-auto space-y-2 p-2 border rounded border-primary/20">
+      <div className="mb-4 max-h-64 overflow-y-auto space-y-3 p-3 border rounded border-primary/20 bg-white/50 dark:bg-black/20">
         {chatMessages.map((msg, index) => (
           <div
             key={index}
-            className={`p-2 rounded ${
-              msg.role === "user"
-                ? "bg-accent/10 text-accent ml-8"
-                : msg.role === "system"
-                ? "bg-primary/5 text-primary/70 italic text-sm"
-                : "bg-primary/10 text-primary mr-8"
+            className={`flex items-start gap-3 ${
+              msg.role === "user" ? "justify-start" : "justify-end"
             }`}
           >
-            <div className="text-xs font-bold mb-1">
-              {msg.role === "user"
-                ? "You"
-                : msg.role === "system"
-                ? "System"
-                : "Blender Assistant"}
+            {msg.role === "user" && (
+              <div className="flex-shrink-0 w-8 h-8 bg-accent/20 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-accent" />
+              </div>
+            )}
+
+            <div
+              className={`max-w-[70%] px-4 py-3 rounded-2xl text-sm ${
+                msg.role === "user"
+                  ? "bg-accent text-white rounded-bl-md"
+                  : msg.error
+                  ? "bg-red-100 text-red-700 border border-red-300 rounded-br-md"
+                  : "bg-gray-100 text-gray-800 border border-gray-200 rounded-br-md"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {msg.role === "assistant" && msg.error && (
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                )}
+                {msg.role === "assistant" && !msg.error && (
+                  <Bot className="w-4 h-4 text-gray-600" />
+                )}
+                <span className="text-xs font-medium opacity-75">
+                  {msg.role === "user"
+                    ? "You"
+                    : msg.error
+                    ? "Error"
+                    : "Blender Assistant"}
+                </span>
+              </div>
+              <div className="whitespace-pre-line">{msg.content}</div>
             </div>
-            <div>{msg.content}</div>
+
+            {msg.role === "assistant" && !msg.error && (
+              <div className="flex-shrink-0 w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center">
+                <Bot className="w-4 h-4 text-primary" />
+              </div>
+            )}
+            {msg.role === "assistant" && msg.error && (
+              <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              </div>
+            )}
           </div>
         ))}
+
+        {/* Streaming indicator */}
+        {isProcessing && (
+          <div className="flex items-start gap-3 justify-end">
+            <div className="max-w-[70%] px-4 py-3 rounded-2xl rounded-br-md bg-gray-100 border border-gray-200">
+              <div className="flex items-center gap-2 mb-1">
+                <Bot className="w-4 h-4 text-gray-600" />
+                <span className="text-xs font-medium opacity-75">
+                  Blender Assistant
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
+            <div className="flex-shrink-0 w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center">
+              <Bot className="w-4 h-4 text-primary" />
+            </div>
+          </div>
+        )}
+
+        {/* Scroll anchor */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input form */}
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
+          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -142,7 +208,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
               ? "Processing..."
               : "Ask me to create or modify objects..."
           }
-          className="flex-1 p-2 border rounded border-primary/30 bg-secondary text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 p-3 border rounded-lg border-primary/30 bg-secondary text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-all"
         />
         <button
           type="submit"
@@ -151,12 +217,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
             connectionStatus.status !== "success" ||
             !query.trim() // Disable if not 'success'
           }
-          className={`p-2 rounded text-secondary ${
+          className={`p-3 rounded-lg text-white transition-all ${
             isProcessing ||
             connectionStatus.status !== "success" ||
             !query.trim()
-              ? "bg-primary/40"
-              : "bg-primary hover:bg-primary/80"
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-accent hover:bg-accent/90 hover:scale-105"
           }`}
         >
           {isProcessing ? (
@@ -166,6 +232,19 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
           )}
         </button>
       </form>
+
+      {/* Cancel button (optional) */}
+      {isProcessing && (
+        <div className="mt-2">
+          <button
+            onClick={handleCancel}
+            disabled={!isProcessing}
+            className="w-full p-3 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-all disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Examples */}
       <div className="mt-4">
@@ -181,7 +260,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ connectionStatus }) => {
               key={index}
               onClick={() => setQuery(example)}
               disabled={isProcessing || connectionStatus.status !== "success"} // Disable if not 'success'
-              className="text-xs bg-secondary px-2 py-1 rounded hover:bg-primary/10 disabled:opacity-50 text-primary border border-primary/20"
+              className="text-xs bg-secondary px-3 py-2 rounded hover:bg-accent/10 hover:text-accent disabled:opacity-50 text-primary border border-primary/20 transition-all"
             >
               {example}
             </button>

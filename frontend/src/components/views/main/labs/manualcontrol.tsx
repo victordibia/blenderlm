@@ -47,19 +47,6 @@ const ManualControlLab: React.FC = () => {
     undefined
   );
 
-  // Chat related state
-  const [chatInput, setChatInput] = useState<string>("");
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ role: string; content: string; id?: string }>
-  >([
-    {
-      role: "system",
-      content:
-        "Hello! I'm your Blender assistant. Try asking me to create objects like 'Add a red cube' or 'Create a blue sphere at position [1, 2, 0]'.",
-    },
-  ]);
-  const [isProcessingChat, setIsProcessingChat] = useState<boolean>(false);
-
   // Default Python code examples
   const codeExamples: CodeExamples = {
     addCube: `# Add a simple red cube at the origin
@@ -520,78 +507,6 @@ print("Animation keyframes created - use the timeline to view the animation")`,
     );
   };
 
-  // Handle chat submission
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (
-      !chatInput.trim() ||
-      isProcessingChat ||
-      connectionStatus.status !== "success"
-    )
-      return;
-
-    // Add user message to chat
-    const userMessage = { role: "user", content: chatInput };
-    setChatMessages((prev) => [...prev, userMessage]);
-
-    // Clear input and set processing state
-    const currentQuery = chatInput;
-    setChatInput("");
-    setIsProcessingChat(true);
-
-    try {
-      // Add a temporary loading message
-      const loadingId = Date.now().toString();
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Thinking...", id: loadingId },
-      ]);
-
-      // Process the query
-      const response = await BlenderAPI.processChat(currentQuery);
-
-      if (response.status === "success" && response.response) {
-        // Remove the loading message
-        setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
-
-        // Add the single assistant message from response.response.content
-        const assistantMessage = {
-          role: "assistant",
-          content:
-            response.response.content || "Assistant processed the request.",
-        };
-
-        setChatMessages((prev) => [...prev, assistantMessage]);
-
-        // Refresh viewport to show any changes made
-        await refreshViewport();
-      } else {
-        // Remove the loading message
-        setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
-        // Add error message
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: `Error: ${
-              response.error ||
-              response.detail ||
-              "Failed to process query or invalid response structure"
-            }`,
-          },
-        ]);
-      }
-    } catch (error) {
-      // Add error message
-      setChatMessages((prev) => [
-        ...prev.filter((msg) => !("id" in msg)),
-        { role: "assistant", content: `Error: ${error}` },
-      ]);
-    } finally {
-      setIsProcessingChat(false);
-    }
-  };
-
   // Render the action feedback toast
   const renderActionFeedback = () => {
     if (!actionFeedback.visible) return null;
@@ -631,7 +546,7 @@ print("Animation keyframes created - use the timeline to view the animation")`,
       {/* Connection Status Component - Always visible */}
       <ConnectionStatusComponent
         connectionStatus={connectionStatus}
-        isCheckingConnection={isCheckingConnection} // This prop might become redundant
+        isCheckingConnection={isCheckingConnection}
         checkConnection={checkConnection}
       />
 
@@ -640,8 +555,6 @@ print("Animation keyframes created - use the timeline to view the animation")`,
         <div className="flex flex-col xl:flex-row gap-6 flex-grow">
           {/* Left Panel: Controls and Project Manager */}
           <div className="flex flex-col flex-1 min-w-0 gap-6">
-            {/* Project Manager Panel */}
-
             {/* Controls Panel */}
             <ControlsPanel
               connectionStatus={connectionStatus}
@@ -651,17 +564,12 @@ print("Animation keyframes created - use the timeline to view the animation")`,
               jobHistory={jobHistory}
               input={input}
               output={output}
-              chatInput={chatInput}
-              chatMessages={chatMessages}
-              isProcessingChat={isProcessingChat}
               codeExamples={codeExamples}
               setInput={setInput}
               setOutput={setOutput}
-              setChatInput={setChatInput}
               setIsJobHistoryOpen={setIsJobHistoryOpen}
               fetchJobHistory={fetchJobHistory}
               executeCode={executeCode}
-              handleChatSubmit={handleChatSubmit}
               handleAddRandomSphere={handleAddRandomSphere}
               handleAddRandomCube={handleAddRandomCube}
               handleAddRandomMaterial={handleAddRandomMaterial}
@@ -671,6 +579,7 @@ print("Animation keyframes created - use the timeline to view the animation")`,
               handleAddCamera={handleAddCamera}
               showFeedback={showFeedback}
               executeBlenderCommand={executeBlenderCommand}
+              onChatComplete={refreshViewport} // <-- refresh scene after chat
             />
           </div>
 

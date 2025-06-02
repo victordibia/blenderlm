@@ -196,7 +196,7 @@ export class BlenderAPI {
       color: [r, g, b, 1.0],
     };
 
-    return this.executeCommand("/api/objects", params);
+    return this.executeCommand("/api/blender/objects", params);
   }
 
   /**
@@ -221,7 +221,7 @@ export class BlenderAPI {
       color: [r, g, b, 1.0],
     };
 
-    return this.executeCommand("/api/objects", params);
+    return this.executeCommand("/api/blender/objects", params);
   }
 
   /**
@@ -238,7 +238,7 @@ export class BlenderAPI {
       color: [r, g, b, 1.0],
     };
 
-    return this.executeCommand("/api/materials", params);
+    return this.executeCommand("/api/blender/materials", params);
   }
 
   /**
@@ -250,7 +250,7 @@ export class BlenderAPI {
       resolution_y: 600,
     };
 
-    return this.executeCommand("/api/render", params);
+    return this.executeCommand("/api/blender/render", params);
   }
 
   /**
@@ -262,7 +262,7 @@ export class BlenderAPI {
       camera_view: false,
     };
 
-    return this.executeCommand("/api/viewport", params);
+    return this.executeCommand("/api/blender/viewport", params);
   }
 
   /**
@@ -270,7 +270,7 @@ export class BlenderAPI {
    */
   static async getSceneInfo(): Promise<{ job_id: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/scene`, {
+      const response = await fetch(`${API_BASE_URL}/api/blender/scene`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -289,14 +289,14 @@ export class BlenderAPI {
    * Execute custom Python code in Blender
    */
   static async executeCode(code: string): Promise<{ job_id: string }> {
-    return this.executeCommand("/api/code", { code });
+    return this.executeCommand("/api/blender/code", { code });
   }
 
   /**
    * Clear the current scene
    */
   static async clearScene(): Promise<{ job_id: string }> {
-    return this.executeCommand("/api/scene/clear", {});
+    return this.executeCommand("/api/blender/scene/clear", {});
   }
 
   /**
@@ -305,28 +305,38 @@ export class BlenderAPI {
   static async addCamera(
     params: { location?: number[]; rotation?: number[] } = {}
   ): Promise<{ job_id: string }> {
-    return this.executeCommand("/api/camera", params);
+    return this.executeCommand("/api/blender/camera", params);
   }
 
   /**
-   * Process a natural language query using the LLM agent
+   * Stream chat responses from the API using WebSocket.
    */
-  static async processChat(query: string): Promise<any> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query }),
-      });
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error("Error processing chat:", error);
-      throw error;
-    }
+  static streamChatWS(
+    query: string,
+    onMessage: (msg: any) => void,
+    onError?: (err: any) => void
+  ): { ws: WebSocket; sendCancel: () => void } {
+    const ws = new WebSocket("ws://localhost:8199/api/blender/ws/chat");
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "start", query }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch (err) {
+        if (onError) onError(err);
+      }
+    };
+    ws.onerror = (err) => {
+      if (onError) onError(err);
+      ws.close();
+    };
+    return {
+      ws,
+      sendCancel: () =>
+        ws.readyState === 1 && ws.send(JSON.stringify({ type: "cancel" })),
+    };
   }
 
   // =============================================================================

@@ -5,7 +5,7 @@ import {
   AlertCircle,
   Download,
   Maximize,
-  Minimize,
+  X,
   Image,
   ChevronDown,
 } from "lucide-react";
@@ -192,6 +192,7 @@ const ViewportPanel: React.FC<ViewportPanelProps> = ({
   const [sceneInfo, setSceneInfo] = useState<any>(null);
   const [sceneJobInfo, setSceneJobInfo] = useState<Job | null>(null);
   const [sceneExpanded, setSceneExpanded] = useState<boolean>(false);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   // Ref and state for image width
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -283,7 +284,7 @@ const ViewportPanel: React.FC<ViewportPanelProps> = ({
               onClick={refreshViewport}
               disabled={
                 isRefreshingViewport || connectionStatus.status !== "success"
-              } // Disable if not 'success'
+              }
             >
               {isRefreshingViewport ? (
                 <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -294,7 +295,7 @@ const ViewportPanel: React.FC<ViewportPanelProps> = ({
             </button>
           )}
 
-          {/* Download button moved here for consistency */}
+          {/* Download button */}
           <button
             className="flex items-center gap-1 px-3 py-1 bg-accent/10 hover:bg-accent/20 text-accent rounded-md"
             onClick={downloadImage}
@@ -304,15 +305,14 @@ const ViewportPanel: React.FC<ViewportPanelProps> = ({
             Download
           </button>
 
+          {/* Maximize button for full screen image modal */}
           <button
             className="flex items-center justify-center h-8 w-8 bg-primary/5 hover:bg-primary/10 text-primary/70 rounded-md"
-            onClick={() => setIsViewportMinimized(!isViewportMinimized)}
+            onClick={() => setIsImageModalOpen(true)}
+            disabled={!previewImage}
+            title="View Fullscreen"
           >
-            {isViewportMinimized ? (
-              <Maximize className="h-4 w-4" />
-            ) : (
-              <Minimize className="h-4 w-4" />
-            )}
+            <Maximize className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -362,13 +362,39 @@ const ViewportPanel: React.FC<ViewportPanelProps> = ({
                     ? "Blender Render"
                     : "Blender Viewport"
                 }
-                className="max-w-full max-h-full object-contain rounded bg-primary"
+                className="max-w-full max-h-full object-contain rounded bg-primary cursor-zoom-in"
                 style={{ width: "auto", height: "auto" }}
                 onLoad={() => {
                   if (imageRef.current)
                     setImageWidth(imageRef.current.clientWidth);
                 }}
+                onClick={() => setIsImageModalOpen(true)}
               />
+              {/* Modal for fullscreen image */}
+              {isImageModalOpen && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+                  onClick={() => setIsImageModalOpen(false)}
+                >
+                  <div
+                    className="relative max-w-full max-h-full flex items-center justify-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={previewImage}
+                      alt="Fullscreen Preview"
+                      className="object-contain max-w-[70vw] max-h-[70vh] rounded shadow-lg"
+                    />
+                    <button
+                      className="absolute top-2 right-2 bg-secondary p-2 rounded-full shadow-md hover:bg-primary/10"
+                      onClick={() => setIsImageModalOpen(false)}
+                      aria-label="Close"
+                    >
+                      <X className="h-5 w-5 text-secondary" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : errorMessage ? (
             <div className="h-full flex flex-col items-center justify-center p-4">
