@@ -1,8 +1,9 @@
 # BlenderLM
 
-![BlenderLM Logo](https://raw.githubusercontent.com/victordibia/blenderlm/main/docs/icon.png)
+<img src="https://raw.githubusercontent.com/victordibia/blenderlm/main/docs/icon.png" width="100" height="100" alt="BlenderLM Logo" style="padding-bottom: 10px;">
 
-[![PyPI version](https://badge.fury.io/py/blenderlm.svg)](https://pypi.org/project/blenderlm/)
+<!-- [![PyPI version](https://badge.fury.io/py/blenderlm.svg)](https://pypi.org/project/blenderlm/) -->
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 BlenderLM is a Python sample app that enables LLMs (Large Language Models) to control and interact with Blender, the open-source 3D creation suite. It provides a clean API and tools designed specifically for use with LLM agent frameworks like Autogen.
@@ -20,7 +21,6 @@ BlenderLM is a Python sample app that enables LLMs (Large Language Models) to co
 ```bash
 # Install the base package
 pip install blenderlm
-
 ```
 
 ## Architecture
