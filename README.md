@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-BlenderLM is a Python sample app that enables LLMs (Large Language Models) to control and interact with Blender, the open-source 3D creation suite. It provides a clean API and tools designed specifically for use with LLM agent frameworks like Autogen.
+BlenderLM is a Python sample app that enables LLMs (Large Language Models) to control and interact with Blender, the open-source 3D creation suite. It provides a clean API and tools designed specifically for use with LLM agent frameworks like Autogen/GoogleADK/CrewAI.
 
 ## Features
 
@@ -53,6 +53,39 @@ BlenderLM consists of three main components:
 ```bash
 # Start the server
 blenderlm serve --port 8000 --blender-port 9876
+```
+
+### Interacting with BlenderLM
+
+You can interact with BlenderLM using the provided client library. Below is an example of how to create a simple agent that uses BlenderLM tools to create a 3D object in Blender.
+
+```python
+import asyncio
+from blenderlm.client.agents import OpenAIAgent
+from blenderlm.client import get_blender_tools
+from blenderlm.client.agents import AgentMessage
+
+async def main():
+    blender_tool_functions = await get_blender_tools()
+
+    # Instantiate the agent, passing the tool functions
+    agent = OpenAIAgent(
+        tools=blender_tool_functions,
+        model_name="gpt-4.1-mini",
+    )
+
+    updates =   agent.run_stream(
+        task="Create a low poly well with the right materials and colors.",
+    )
+    async for update in updates:
+        if isinstance(update, AgentMessage):
+            print(update.role,":", update.content, str(update.metadata))
+        else:
+            print(update.role,":", update.content)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
 ```
 
 ## Available Tools
