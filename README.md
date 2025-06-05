@@ -1,5 +1,7 @@
 # BlenderLM
 
+https://raw.githubusercontent.com/victordibia/blenderlm/refs/heads/main/docs/icon.png?token=GHSAT0AAAAAADE2LAUUZCYKS3VJC2R4KYFS2CBHPMA
+
 ![BlenderLM Logo](https://raw.githubusercontent.com/victordibia/blenderlm/main/docs/icon.png)
 
 [![PyPI version](https://badge.fury.io/py/blenderlm.svg)](https://pypi.org/project/blenderlm/)
