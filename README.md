@@ -6,6 +6,8 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
+> Note: This is a sample project I built as part of a talk (it may not be maintained going forward).
+
 BlenderLM is a Python sample app that enables LLMs (Large Language Models) to control and interact with Blender, the open-source 3D creation suite. It provides a clean API and tools designed specifically for use with LLM agent frameworks like Autogen/GoogleADK/CrewAI.
 
 ## Features
