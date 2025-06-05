@@ -31,9 +31,45 @@ class AgentMessageMetadata(BaseModel):
     finish_reason: Optional[str] = None # e.g., "stop", "length", "tool_calls", "error"
     error: Optional[str] = None # Details of an error if one occurred
     duration: Optional[float] = None # Duration of the agent run in seconds
+    
+    # Step tracking fields for planned execution
+    step_index: Optional[int] = None # Current step index (0-based) in planned execution
+    total_steps: Optional[int] = None # Total number of steps in the plan
 
     class Config:
         extra = "allow" # Allow other arbitrary fields
+
+# Tool-related models
+class ToolCall(BaseModel):
+    """Represents a tool/function call."""
+    id: str
+    name: str
+    arguments: Dict[str, Any]
+
+class ToolResult(BaseModel):
+    """Represents the result of a tool execution."""
+    tool_call_id: str
+    tool_name: str
+    result: str
+    success: bool
+    error: Optional[str] = None
+
+class VerificationStatus(BaseModel):
+    """Represents the status of task verification."""
+    status: bool
+    reason: str
+    next_step: Optional[str] = None
+    confidence: Optional[float] = None
+
+# Planning-related models
+class PlanStep(BaseModel):
+    """A single step in a task plan."""
+    task: str = Field(description="Clear, actionable description of what to accomplish in this step")
+    reasoning: str = Field(description="Justification for why this step is necessary and how it contributes to the overall goal")
+
+class Plan(BaseModel):
+    """A complete plan for accomplishing a task."""
+    steps: List[PlanStep] = Field(description="Ordered list of steps to complete the task")
 
 # Base message for all agent messages
 class BaseAgentMessage(BaseModel):
@@ -82,6 +118,80 @@ class AgentEventMessage(BaseAgentMessage):
             parts.append(f"Content: {self.content}")
         if self.event_type:
             parts.append(f"Event Type: {self.event_type}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+# Specialized message types for tools and verification
+class ToolCallMessage(BaseAgentMessage):
+    """Message representing a tool/function call."""
+    tool_call: ToolCall
+    type: Optional[str] = "tool_call"
+    role: Literal["user", "assistant", "tool", "event"] = "assistant"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        parts.append(f"Tool Call: {self.tool_call.name}({self.tool_call.arguments})")
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+class ToolResultMessage(BaseAgentMessage):
+    """Message representing the result of a tool execution."""
+    tool_result: ToolResult
+    type: Optional[str] = "tool_result"
+    role: Literal["user", "assistant", "tool", "event"] = "tool"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        parts.append(f"Tool Result: {self.tool_result.tool_name} -> {self.tool_result.result[:100]}...")
+        if not self.tool_result.success and self.tool_result.error:
+            parts.append(f"Error: {self.tool_result.error}")
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+class VerificationMessage(BaseAgentMessage):
+    """Message representing task verification status."""
+    verification: VerificationStatus
+    type: Optional[str] = "verification"
+    role: Literal["user", "assistant", "tool", "event"] = "assistant"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        parts.append(f"Verification: {self.verification.reason}")
+        if not self.verification.status and self.verification.next_step:
+            parts.append(f"Next Step: {self.verification.next_step}")
+        if self.verification.confidence:
+            parts.append(f"Confidence: {self.verification.confidence:.2f}")
+        if self.content:
+            parts.append(f"Content: {self.content}")
+        if self.metadata:
+            parts.append(f"Metadata: {self.metadata.model_dump()}")
+        parts.append(f"Type: {self.type}")
+        return "\n".join(parts)
+
+class PlanMessage(BaseAgentMessage):
+    """Message representing a planning action or proposal."""
+    plan: Plan  # Now we can use Plan directly since it's defined above
+    type: Optional[str] = "plan"
+    role: Literal["user", "assistant", "tool", "event"] = "assistant"
+
+    def to_text(self) -> str:
+        parts = [f"Role: {self.role}"]
+        if self.plan:
+            parts.append(f"Plan: {len(self.plan.steps)} steps")
+            for i, step in enumerate(self.plan.steps, 1):
+                parts.append(f"  Step {i}: {step.task}")
+        if self.content:
+            parts.append(f"Content: {self.content}")
         if self.metadata:
             parts.append(f"Metadata: {self.metadata.model_dump()}")
         parts.append(f"Type: {self.type}")

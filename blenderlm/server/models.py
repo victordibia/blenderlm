@@ -240,14 +240,12 @@ class ToolInfo(BaseModel):
     endpoint: str
 
 
-class ViewportCaptureRequest(BaseModel):
-    filepath: Optional[str] = None
+class ViewportCaptureRequest(BaseModel): 
     camera_view: bool = False
     return_base64: bool = True
     
     def to_params(self) -> Dict[str, Any]:
-        return {
-            "filepath": self.filepath,
+        return { 
             "camera_view": self.camera_view,
             "return_base64": self.return_base64
         }

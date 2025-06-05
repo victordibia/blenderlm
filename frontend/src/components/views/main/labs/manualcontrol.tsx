@@ -477,13 +477,6 @@ print("Animation keyframes created - use the timeline to view the animation")`,
     executeBlenderCommand(() => BlenderAPI.addRandomCube(), "Add Random Cube");
   };
 
-  const handleAddRandomMaterial = () => {
-    executeBlenderCommand(
-      () => BlenderAPI.addRandomMaterial(),
-      "Add Random Material"
-    );
-  };
-
   const handleRenderScene = () => {
     executeBlenderCommand(() => BlenderAPI.renderScene(), "Render Scene", true);
   };
@@ -552,7 +545,7 @@ print("Animation keyframes created - use the timeline to view the animation")`,
 
       {/* Main Content: Side by Side Layout - Conditionally rendered */}
       {connectionStatus.status === "success" && (
-        <div className="flex flex-col xl:flex-row gap-6 flex-grow">
+        <div className="flex flex-col lg:flex-row gap-6 flex-grow">
           {/* Left Panel: Controls and Project Manager */}
           <div className="flex flex-col flex-1 min-w-0 gap-6">
             {/* Controls Panel */}
@@ -572,14 +565,13 @@ print("Animation keyframes created - use the timeline to view the animation")`,
               executeCode={executeCode}
               handleAddRandomSphere={handleAddRandomSphere}
               handleAddRandomCube={handleAddRandomCube}
-              handleAddRandomMaterial={handleAddRandomMaterial}
               handleRenderScene={handleRenderScene}
               handleGetSceneInfo={handleGetSceneInfo}
               handleClearScene={handleClearScene}
               handleAddCamera={handleAddCamera}
               showFeedback={showFeedback}
               executeBlenderCommand={executeBlenderCommand}
-              onChatComplete={refreshViewport} // <-- refresh scene after chat
+              refreshViewport={refreshViewport}
             />
           </div>
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from pydantic import ValidationError
 from ..models import (
     CodeRequest,
     CreateObjectRequest, 
@@ -141,14 +142,22 @@ async def execute_code(request_body: CodeRequest, request: Request, background_t
 
 @router.post("/scene/clear")
 async def clear_scene(request_body: ClearSceneRequest, request: Request, background_tasks: BackgroundTasks):
-    job_id = request.app.state.database.add_job("clear_scene", request_body.to_params())
-    background_tasks.add_task(
-        process_job, 
-        job_id, 
-        request.app.state.database, 
-        request.app.state.blender_manager
-    )
-    return {"job_id": job_id}
+    try:
+        job_id = request.app.state.database.add_job("clear_scene", request_body.to_params())
+        background_tasks.add_task(
+            process_job, 
+            job_id, 
+            request.app.state.database, 
+            request.app.state.blender_manager
+        )
+        return {"job_id": job_id}
+    except ValidationError as ve:
+        logger.error(f"Validation error clearing scene: {ve}")
+        print(f"Error JSON: {ve.json()}")
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error clearing scene: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.post("/camera")
 async def add_camera(request_body: AddCameraRequest, request: Request, background_tasks: BackgroundTasks):

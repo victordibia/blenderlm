@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
   PlayCircle,
   RefreshCcw,
@@ -12,16 +12,10 @@ import {
   ChevronUp,
   Command,
   MessageSquare,
-  SendHorizontal,
-  Loader2,
   Database,
 } from "lucide-react";
 import { Tabs, Button } from "antd";
-import BlenderAPI, {
-  ConnectionStatus,
-  Job,
-  ProjectInfo,
-} from "../../../utils/blenderapi";
+import { ConnectionStatus, Job } from "../../../utils/blenderapi";
 import ProjectManagerPanel from "./ProjectManagerPanel";
 import ChatPanel from "./ChatPanel";
 
@@ -45,7 +39,6 @@ interface ControlsPanelProps {
   executeCode: () => void;
   handleAddRandomSphere: () => void;
   handleAddRandomCube: () => void;
-  handleAddRandomMaterial: () => void;
   handleRenderScene: () => void;
   handleGetSceneInfo: () => void;
   handleClearScene: () => void;
@@ -56,7 +49,7 @@ interface ControlsPanelProps {
     actionName: string,
     skipViewportRefresh?: boolean
   ) => void;
-  onChatComplete?: () => void; // Add this prop
+  refreshViewport?: () => Promise<void>;
 }
 
 const ControlsPanel: React.FC<ControlsPanelProps> = ({
@@ -75,64 +68,17 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
   executeCode,
   handleAddRandomSphere,
   handleAddRandomCube,
-  handleAddRandomMaterial,
   handleRenderScene,
   handleGetSceneInfo,
   handleClearScene,
   handleAddCamera,
   showFeedback,
   executeBlenderCommand,
-  onChatComplete,
+  refreshViewport = async () => {}, // Default to empty function if not provided
 }) => {
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
-  const [currentProject, setCurrentProject] = useState<ProjectInfo | null>(
-    null
-  );
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
-  const [isCreatingProject, setIsCreatingProject] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
-  const [newProjectDescription, setNewProjectDescription] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const [fileUploadPath, setFileUploadPath] = useState("");
-  const [showCreateForm, setShowCreateForm] = useState(false);
-
-  useEffect(() => {
-    if (connectionStatus.status === "success") {
-      loadProjects();
-      getCurrentProjectInfo();
-    }
-  }, [connectionStatus.status]);
-
   const setCodeExample = (exampleKey: string) => {
     setInput(codeExamples[exampleKey]);
   };
-
-  const loadProjects = async () => {
-    setIsLoadingProjects(true);
-    try {
-      const response = await BlenderAPI.listProjects("active", 20);
-      setProjects(response.projects);
-    } catch (error) {
-      showFeedback(`Error loading projects: ${error}`, "error");
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  };
-
-  const getCurrentProjectInfo = async () => {
-    try {
-      showFeedback("Project info updated", "info");
-    } catch (error) {
-      console.error("Error getting current project info:", error);
-    }
-  };
-
-  const exampleQueries = [
-    "Add a red cube",
-    "Create a blue sphere",
-    "Add a green cone at [2, 0, 0]",
-    "Clear the scene",
-  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -151,7 +97,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
         >
           <ChatPanel
             connectionStatus={connectionStatus}
-            onChatComplete={onChatComplete}
+            refreshViewport={refreshViewport}
           />
         </Tabs.TabPane>
         <Tabs.TabPane
@@ -163,131 +109,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
           key="2"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Add Random Sphere</h3>
-                <Box className="h-5 w-5 text-accent" />
-              </div>
-              <p className="text-sm text-primary/60 mb-3">
-                Add a sphere with random position
-              </p>
-              <Button
-                type="primary"
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleAddRandomSphere}
-                disabled={
-                  isExecutingCommand || connectionStatus.status !== "success"
-                }
-              >
-                {isExecutingCommand ? (
-                  <RefreshCcw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                Add Sphere
-              </Button>
-            </div>
-
-            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Add Random Cube</h3>
-                <Box className="h-5 w-5 text-accent" />
-              </div>
-              <p className="text-sm text-primary/60 mb-3">
-                Add a cube with random position
-              </p>
-              <Button
-                type="primary"
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleAddRandomCube}
-                disabled={
-                  isExecutingCommand || connectionStatus.status !== "success"
-                }
-              >
-                {isExecutingCommand ? (
-                  <RefreshCcw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                Add Cube
-              </Button>
-            </div>
-
-            <div className="hidden border rounded-lg p-3 hover:bg-primary/5 transition">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Random Material</h3>
-                <Layers className="h-5 w-5 text-accent" />
-              </div>
-              <p className="text-sm text-primary/60 mb-3">
-                Apply a random color material
-              </p>
-              <Button
-                type="primary"
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleAddRandomMaterial}
-                disabled={
-                  isExecutingCommand || connectionStatus.status !== "success"
-                }
-              >
-                {isExecutingCommand ? (
-                  <RefreshCcw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                Apply Material
-              </Button>
-            </div>
-
-            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Render Scene</h3>
-                <Image className="h-5 w-5 text-accent" />
-              </div>
-              <p className="text-sm text-primary/60 mb-3">
-                Create a full render of the scene
-              </p>
-              <Button
-                type="primary"
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleRenderScene}
-                disabled={
-                  isExecutingCommand || connectionStatus.status !== "success"
-                }
-              >
-                {isExecutingCommand ? (
-                  <RefreshCcw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <PlayCircle className="h-4 w-4" />
-                )}
-                Render
-              </Button>
-            </div>
-
-            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Scene Info</h3>
-                <Layers className="h-5 w-5 text-accent" />
-              </div>
-              <p className="text-sm text-primary/60 mb-3">
-                Get current scene information
-              </p>
-              <Button
-                type="primary"
-                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleGetSceneInfo}
-                disabled={
-                  isExecutingCommand || connectionStatus.status !== "success"
-                }
-              >
-                {isExecutingCommand ? (
-                  <RefreshCcw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" />
-                )}
-                Get Info
-              </Button>
-            </div>
-
+            {/* Clear Scene - now first */}
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium">Clear Scene</h3>
@@ -313,6 +135,85 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               </Button>
             </div>
 
+            {/* Add Random Sphere */}
+            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium">Add Sphere</h3>
+                <Box className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-sm text-primary/60 mb-3">
+                Add a sphere with random position
+              </p>
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleAddRandomSphere}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
+              >
+                {isExecutingCommand ? (
+                  <RefreshCcw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Add Sphere
+              </Button>
+            </div>
+
+            {/* Add Random Cube */}
+            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium">Add Cube</h3>
+                <Box className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-sm text-primary/60 mb-3">
+                Add a cube with random position
+              </p>
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleAddRandomCube}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
+              >
+                {isExecutingCommand ? (
+                  <RefreshCcw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Add Cube
+              </Button>
+            </div>
+
+            {/* Render Scene */}
+            <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium">Render Scene</h3>
+                <Image className="h-5 w-5 text-accent" />
+              </div>
+              <p className="text-sm text-primary/60 mb-3">
+                Create a full render of the scene
+              </p>
+              <Button
+                type="primary"
+                className="w-full flex items-center justify-center gap-1 px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleRenderScene}
+                disabled={
+                  isExecutingCommand || connectionStatus.status !== "success"
+                }
+              >
+                {isExecutingCommand ? (
+                  <RefreshCcw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PlayCircle className="h-4 w-4" />
+                )}
+                Render
+              </Button>
+            </div>
+
+            {/* Add Camera */}
             <div className="border rounded-lg p-3 hover:bg-primary/5 transition">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="font-medium">Add Camera</h3>
@@ -337,9 +238,10 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
                 Add Camera
               </Button>
             </div>
+            {/* Scene Info button removed/hidden */}
           </div>
         </Tabs.TabPane>
-        <Tabs.TabPane
+        {/* <Tabs.TabPane
           tab={
             <span className="flex items-center gap-1">
               <Code className="h-4 w-4" /> Code
@@ -419,7 +321,7 @@ const ControlsPanel: React.FC<ControlsPanelProps> = ({
               </div>
             )}
           </div>
-        </Tabs.TabPane>
+        </Tabs.TabPane> */}
         <Tabs.TabPane
           tab={
             <span className="flex items-center gap-1">

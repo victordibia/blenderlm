@@ -312,13 +312,14 @@ export class BlenderAPI {
    * Stream chat responses from the API using WebSocket.
    */
   static streamChatWS(
-    query: string,
+    content: any[] | string,
     onMessage: (msg: any) => void,
     onError?: (err: any) => void
   ): { ws: WebSocket; sendCancel: () => void } {
     const ws = new WebSocket("ws://localhost:8199/api/blender/ws/chat");
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "start", query }));
+      // Send as { type: 'start', content } for multimodal
+      ws.send(JSON.stringify({ type: "start", content }));
     };
     ws.onmessage = (event) => {
       try {

@@ -118,8 +118,7 @@ class BlenderLMClient:
         )
 
     async def capture_viewport(
-        self,
-        filepath: Optional[str] = None,
+        self, 
         camera_view: Optional[bool] = None,
         return_base64: Optional[bool] = True,
         wait_for_result: bool = True,
@@ -127,8 +126,7 @@ class BlenderLMClient:
         """
         Capture the current viewport using OpenGL rendering.
         """
-        return await tools.capture_viewport(
-            filepath=filepath,
+        return await tools.capture_viewport( 
             camera_view=camera_view,
             return_base64=return_base64,
             session_id=self.session_id,

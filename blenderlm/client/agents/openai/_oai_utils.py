@@ -108,3 +108,22 @@ def agent_task_to_oai_user_message(task) -> Union[ChatCompletionUserMessageParam
     else:
         print(f"Warning: Unsupported task type: {type(task)}")
         return None
+
+async def get_blender_scene_state() -> ChatCompletionUserMessageParam:
+    """
+    Fetches the current Blender scene info and a base64 image capture.
+    Returns a ChatCompletionUserMessageParam with the scene info and image (as markdown-compatible dicts).
+    This utility can be used by any agent needing Blender context.
+    """
+    from blenderlm.client.client import BlenderLMClient
+    client = BlenderLMClient()
+    scene_info = await client.get_scene_info(wait_for_result=True)
+    scene_status_prompt = f"The current status of the blender scene is as follows: \n{str(scene_info)}\n"
+    scene_image = await client.capture_viewport(camera_view=False, return_base64=True, wait_for_result=True)
+    return ChatCompletionUserMessageParam(
+        role="user",
+        content=[
+            {"type": "text", "text": scene_status_prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{scene_image['image_base64']}"}}
+        ]
+    )

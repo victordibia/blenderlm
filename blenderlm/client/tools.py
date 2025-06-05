@@ -17,12 +17,12 @@ class CaptureViewPortResult(BaseModel):
 
 async def create_blender_object(
     type: str,
-    name: Optional[str] = None,
-    location_x: Optional[float] = None,
-    location_y: Optional[float] = None,
-    location_z: Optional[float] = None,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    name: Optional[str],
+    location_x: Optional[float],
+    location_y: Optional[float],
+    location_z: Optional[float],
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Create a new object in Blender.
@@ -54,8 +54,8 @@ async def create_blender_object(
 
 async def delete_blender_object(
     name: str,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Delete an object from Blender.
@@ -78,10 +78,10 @@ async def delete_blender_object(
 
 async def set_blender_material(
     object_name: str,
-    color: Optional[List[float]] = None,
-    material_name: Optional[str] = None,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    color: Optional[List[float]],
+    material_name: Optional[str],
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Set a material for an object in Blender.
@@ -110,11 +110,11 @@ async def set_blender_material(
     return result if wait_for_result else result
 
 async def render_blender_scene(
-    output_path: Optional[str] = None,
-    resolution_x: Optional[int] = None,
-    resolution_y: Optional[int] = None,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    output_path: Optional[str],
+    resolution_x: Optional[int],
+    resolution_y: Optional[int],
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Render the current Blender scene.
@@ -145,8 +145,8 @@ async def render_blender_scene(
     return result if wait_for_result else result
 
 async def get_blender_scene_info(
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Get information about the current Blender scene.
@@ -166,12 +166,11 @@ async def get_blender_scene_info(
         scene = await _wait_for_job_completion(scene["job_id"], api_url, session_id)
     return scene if wait_for_result else scene
 
-async def capture_viewport(
-    filepath: Optional[str] = None,
-    camera_view: Optional[bool] = None,
-    return_base64: Optional[bool] = True,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+async def capture_viewport( 
+    camera_view: Optional[bool],
+    return_base64: Optional[bool],
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Capture the current Blender viewport as an image.
@@ -186,8 +185,7 @@ async def capture_viewport(
     """
     api_url = default_api_url
     data = {}
-    if filepath:
-        data["filepath"] = filepath
+    
     if camera_view is not None:
         data["camera_view"] = camera_view
     if return_base64 is not None:
@@ -203,11 +201,11 @@ async def capture_viewport(
 
 async def execute_code(
     code: str,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
-    Execute arbitrary Python code in Blender.
+    Execute arbitrary Python code in Blender to address tasks.
     Args:
         code: The Python code to execute.
         session_id: Optional session ID for Blender connection.
@@ -227,8 +225,8 @@ async def execute_code(
     return result if wait_for_result else result
 
 async def clear_blender_scene(
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Clear all objects from the Blender scene.
@@ -241,7 +239,7 @@ async def clear_blender_scene(
     api_url = default_api_url
     headers = {"session_id": session_id} if session_id else {}
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{api_url}/api/blender/scene/clear", headers=headers)
+        response = await client.post(f"{api_url}/api/blender/scene/clear", json={},headers=headers)
         response.raise_for_status()
         result = response.json()
     if wait_for_result and "job_id" in result:
@@ -249,10 +247,10 @@ async def clear_blender_scene(
     return result if wait_for_result else result
 
 async def add_blender_camera(
-    location: Optional[List[float]] = None,
-    rotation: Optional[List[float]] = None,
-    session_id: Optional[str] = None,
-    wait_for_result: bool = True,
+    location: Optional[List[float]],
+    rotation: Optional[List[float]],
+    session_id: Optional[str],
+    wait_for_result: bool,
 ) -> Any:
     """
     Add a camera to the Blender scene.
@@ -299,10 +297,10 @@ async def _wait_for_job_completion(job_id: str, api_url: str, session_id: Option
 
 # List of all tool callables for agent registration
 blender_tools = [
-    create_blender_object,
-    delete_blender_object,
-    set_blender_material,
-    render_blender_scene,
+    # create_blender_object,
+    # delete_blender_object,
+    # set_blender_material,
+    # render_blender_scene,
     get_blender_scene_info,
     capture_viewport,
     execute_code,

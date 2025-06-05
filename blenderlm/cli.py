@@ -373,67 +373,7 @@ def version():
     """
     console.print(f"BlenderLM version: [bold blue]{VERSION}[/bold blue]")
 
-@app.command()
-def test(
-    api_url: str = "http://localhost:8199",
-    blender_host: str = "localhost",
-    blender_port: int = 9876,
-    check_only: bool = False,
-):
-    """
-    Test the BlenderLM setup by creating objects in Blender.
-    
-    This command will connect to the API server and create test objects
-    to verify that the entire pipeline is working correctly.
-    """
-    print_banner()
-    
-    console = Console()
-    
-    # First check if Blender is running with the addon
-    if check_blender_connection(console, blender_host, blender_port) != 0:
-        return 1
-    
-    # If check_only flag is set, don't proceed with creating objects
-    if check_only:
-        console.print("[green]Blender connection verified. Use without --check-only to run the full test.[/green]")
-        return 0
-    
-    # Run the test
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]Running BlenderLM test...[/bold blue]"),
-        transient=True,
-    ) as progress:
-        task = progress.add_task("Testing...", total=None)
-        
-        try:
-            # Run the client test
-            client = BlenderLMClient(api_url=api_url)
-            result = asyncio.run(client.run_test_scene())
-            
-            progress.stop()
-            
-            if "failed" in result.lower():
-                console.print(f"[bold red]✗ Test failed[/bold red]")
-                console.print(f"[red]{result}[/red]")
-                return 1
-            else:
-                console.print("[bold green]✓ Test completed successfully![/bold green]")
-                console.print(f"[green]{result}[/green]")
-                
-                console.print("\n[bold]Check Blender to see the created objects:[/bold]")
-                console.print("• A red cube at position [-1, 0, 0]")
-                console.print("• A blue cube at position [1, 0, 0]")
-                return 0
-                
-        except Exception as e:
-            progress.stop()
-            console.print(f"[bold red]✗ Test failed with error:[/bold red]")
-            console.print(f"[red]{str(e)}[/red]")
-            return 1
-
-
+ 
 def check_blender_connection(console, host, port):
     """Check if Blender is running with the addon activated"""
     with Progress(
